@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api, ApiError } from '../../lib/apiClient';
 import { useAuth } from '../../lib/auth';
+import { formatDate } from '../../lib/format';
 import { StatusBadge } from '../admin/Leave';
 
 interface LeaveType { id: string; name: string }
@@ -72,7 +73,7 @@ export function MyLeave() {
           <tbody>
             {requests?.map((r) => (
               <tr key={r.id} className="border-t">
-                <td className="px-4 py-2">{new Date(r.startDate).toLocaleDateString()} - {new Date(r.endDate).toLocaleDateString()}</td>
+                <td className="px-4 py-2">{formatDate(r.startDate)} - {formatDate(r.endDate)}</td>
                 <td className="px-4 py-2">{r.totalDays}</td>
                 <td className="px-4 py-2"><StatusBadge status={r.status} /></td>
                 <td className="px-4 py-2">{r.reason}</td>

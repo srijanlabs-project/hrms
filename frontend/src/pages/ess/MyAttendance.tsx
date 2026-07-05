@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/apiClient';
+import { formatDate, formatTime } from '../../lib/format';
 
 interface AttendanceRecord {
   id: string;
@@ -27,10 +28,10 @@ export function MyAttendance() {
             {isLoading && <tr><td colSpan={4} className="px-4 py-4 text-gray-400">Loading...</td></tr>}
             {records?.map((r) => (
               <tr key={r.id} className="border-t">
-                <td className="px-4 py-2">{new Date(r.date).toLocaleDateString()}</td>
+                <td className="px-4 py-2">{formatDate(r.date)}</td>
                 <td className="px-4 py-2">{r.status}</td>
-                <td className="px-4 py-2">{r.checkIn ? new Date(r.checkIn).toLocaleTimeString() : '—'}</td>
-                <td className="px-4 py-2">{r.checkOut ? new Date(r.checkOut).toLocaleTimeString() : '—'}</td>
+                <td className="px-4 py-2">{formatTime(r.checkIn)}</td>
+                <td className="px-4 py-2">{formatTime(r.checkOut)}</td>
               </tr>
             ))}
             {records?.length === 0 && <tr><td colSpan={4} className="px-4 py-4 text-gray-400">No records this month.</td></tr>}

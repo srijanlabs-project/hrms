@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/apiClient';
 import { useAuth } from '../../lib/auth';
+import { formatCurrency, formatDate } from '../../lib/format';
 
 interface Payslip {
   id: string;
@@ -31,10 +32,10 @@ export function MyPayslips() {
             {isLoading && <tr><td colSpan={5} className="px-4 py-4 text-gray-400">Loading...</td></tr>}
             {payslips?.map((p) => (
               <tr key={p.id} className="border-t">
-                <td className="px-4 py-2">{new Date(p.createdAt).toLocaleDateString()}</td>
-                <td className="px-4 py-2">{p.grossEarnings}</td>
-                <td className="px-4 py-2">{p.totalDeductions}</td>
-                <td className="px-4 py-2 font-medium">{p.netPay}</td>
+                <td className="px-4 py-2">{formatDate(p.createdAt)}</td>
+                <td className="px-4 py-2">{formatCurrency(p.grossEarnings)}</td>
+                <td className="px-4 py-2">{formatCurrency(p.totalDeductions)}</td>
+                <td className="px-4 py-2 font-medium">{formatCurrency(p.netPay)}</td>
                 <td className="px-4 py-2">{p.status}</td>
               </tr>
             ))}

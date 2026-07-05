@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/apiClient';
+import { formatDate, formatTime } from '../../lib/format';
 
 interface AttendanceRecord {
   id: string;
@@ -50,10 +51,10 @@ export function AdminAttendance() {
             {!employeeId && <tr><td colSpan={5} className="px-4 py-4 text-gray-400">Select an employee to view attendance.</td></tr>}
             {records?.map((r) => (
               <tr key={r.id} className="border-t hover:bg-gray-50">
-                <td className="px-4 py-2">{new Date(r.date).toLocaleDateString()}</td>
+                <td className="px-4 py-2">{formatDate(r.date)}</td>
                 <td className="px-4 py-2">{r.status}</td>
-                <td className="px-4 py-2">{r.checkIn ? new Date(r.checkIn).toLocaleTimeString() : '—'}</td>
-                <td className="px-4 py-2">{r.checkOut ? new Date(r.checkOut).toLocaleTimeString() : '—'}</td>
+                <td className="px-4 py-2">{formatTime(r.checkIn)}</td>
+                <td className="px-4 py-2">{formatTime(r.checkOut)}</td>
                 <td className="px-4 py-2">{r.workedMinutes}</td>
               </tr>
             ))}

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/apiClient';
+import { formatDate } from '../../lib/format';
 
 interface LeaveRequest {
   id: string;
@@ -37,7 +38,7 @@ export function AdminLeave() {
             {requests?.map((r) => (
               <tr key={r.id} className="border-t hover:bg-gray-50">
                 <td className="px-4 py-2">{typeName(r.leaveTypeId)}</td>
-                <td className="px-4 py-2">{new Date(r.startDate).toLocaleDateString()} - {new Date(r.endDate).toLocaleDateString()}</td>
+                <td className="px-4 py-2">{formatDate(r.startDate)} - {formatDate(r.endDate)}</td>
                 <td className="px-4 py-2">{r.totalDays}</td>
                 <td className="px-4 py-2"><StatusBadge status={r.status} /></td>
                 <td className="px-4 py-2">{r.reason}</td>

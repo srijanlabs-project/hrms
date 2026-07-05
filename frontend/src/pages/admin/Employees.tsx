@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/apiClient';
+import { formatDate } from '../../lib/format';
 
 interface Employee {
   id: string;
@@ -92,7 +93,7 @@ export function Employees() {
                 </td>
                 <td className="px-4 py-2">{e.employmentStatus}</td>
                 <td className="px-4 py-2">{e.employmentType}</td>
-                <td className="px-4 py-2">{new Date(e.dateOfJoining).toLocaleDateString()}</td>
+                <td className="px-4 py-2">{formatDate(e.dateOfJoining)}</td>
               </tr>
             ))}
             {employees?.length === 0 && (

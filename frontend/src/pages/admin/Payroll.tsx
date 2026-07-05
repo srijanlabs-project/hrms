@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api, ApiError } from '../../lib/apiClient';
+import { formatCurrency } from '../../lib/format';
 import { StatusBadge } from './Leave';
 
 interface PayrollRun {
@@ -57,7 +58,7 @@ export function Payroll() {
                 <td className="px-4 py-2">{r.period}</td>
                 <td className="px-4 py-2">{r.runType}</td>
                 <td className="px-4 py-2"><StatusBadge status={r.status} /></td>
-                <td className="px-4 py-2">{r.totalNet ?? '—'}</td>
+                <td className="px-4 py-2">{formatCurrency(r.totalNet)}</td>
                 <td className="px-4 py-2">
                   {r.status === 'draft' && (
                     <button onClick={() => { setError(null); processRun.mutate(r.id); }} className="text-brand-600 text-xs underline">

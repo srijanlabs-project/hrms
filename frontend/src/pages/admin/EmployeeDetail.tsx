@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/apiClient';
+import { formatDate } from '../../lib/format';
 
 interface EmployeeFull {
   id: string;
@@ -38,7 +39,7 @@ export function EmployeeDetail() {
         <div><span className="text-gray-500">Employee Code</span><div>{employee.employeeCode}</div></div>
         <div><span className="text-gray-500">Status</span><div>{employee.employmentStatus}</div></div>
         <div><span className="text-gray-500">Employment Type</span><div>{employee.employmentType}</div></div>
-        <div><span className="text-gray-500">Date of Joining</span><div>{new Date(employee.dateOfJoining).toLocaleDateString()}</div></div>
+        <div><span className="text-gray-500">Date of Joining</span><div>{formatDate(employee.dateOfJoining)}</div></div>
         <div><span className="text-gray-500">Department</span><div>{employee.department?.name ?? '—'}</div></div>
         <div><span className="text-gray-500">Designation</span><div>{employee.designation?.name ?? '—'}</div></div>
         <div><span className="text-gray-500">Manager</span><div>{employee.manager ? `${employee.manager.firstName} ${employee.manager.lastName ?? ''}` : '—'}</div></div>
