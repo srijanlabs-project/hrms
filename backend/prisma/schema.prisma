@@ -227,6 +227,9 @@ model Employee {
   bankAccount   EmployeeBankAccount?
 
   @@unique([tenantId, employeeCode])
+  @@index([tenantId, employmentStatus])
+  @@index([tenantId, managerId])
+  @@index([tenantId, departmentId])
   @@map("employees")
 }
 
@@ -343,6 +346,7 @@ model ApprovalInstance {
   loanAdvance           LoanAdvance?
   jobRequisition        JobRequisition?
 
+  @@index([tenantId, status])
   @@map("approval_instances")
 }
 
@@ -415,6 +419,7 @@ model AttendanceRecord {
   regularizationRequests RegularizationRequest[]
 
   @@unique([employeeId, date])
+  @@index([tenantId, employeeId, date])
   @@map("attendance_records")
 }
 
@@ -536,6 +541,7 @@ model LeaveBalance {
   leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
 
   @@unique([employeeId, leaveTypeId, period])
+  @@index([tenantId, employeeId])
   @@map("leave_balances")
 }
 
@@ -570,6 +576,8 @@ model LeaveRequest {
   leaveType        LeaveType         @relation(fields: [leaveTypeId], references: [id])
   approvalInstance ApprovalInstance? @relation(fields: [approvalInstanceId], references: [id])
 
+  @@index([tenantId, employeeId, status])
+  @@index([employeeId, status, startDate, endDate])
   @@map("leave_requests")
 }
 
@@ -615,6 +623,7 @@ model EmployeeCompensation {
 
   salaryStructure SalaryStructure @relation(fields: [salaryStructureId], references: [id])
 
+  @@index([tenantId, employeeId])
   @@map("employee_compensations")
   // Partial unique (employee_id) WHERE effective_to IS NULL added via raw SQL migration.
 }
@@ -686,6 +695,7 @@ model Payslip {
   statutoryDeductions StatutoryDeduction[]
 
   @@unique([payrollRunId, employeeId])
+  @@index([tenantId, employeeId])
   @@map("payslips")
 }
 
@@ -739,6 +749,7 @@ model LoanAdvance {
 
   approvalInstance ApprovalInstance? @relation(fields: [approvalInstanceId], references: [id])
 
+  @@index([employeeId, status, type])
   @@map("loan_advances")
 }
 
@@ -809,6 +820,7 @@ model JobRequisition {
   approvalInstance ApprovalInstance? @relation(fields: [approvalInstanceId], references: [id])
   candidates       Candidate[]
 
+  @@index([tenantId, status])
   @@map("job_requisitions")
 }
 
@@ -849,6 +861,8 @@ model Candidate {
   interviews  InterviewFeedback[]
   offers      Offer[]
 
+  @@index([tenantId, requisitionId])
+  @@index([tenantId, currentStage])
   @@map("candidates")
 }
 
