@@ -13,6 +13,11 @@ import { LeaveModule } from './leave/leave.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { HealthController } from './health.controller';
 import { RecruitmentModule } from './recruitment/recruitment.module';
+import { PerformanceModule } from './performance/performance.module';
+import { LearningModule } from './learning/learning.module';
+import { AssetsModule } from './assets/assets.module';
+import { ExitModule } from './exit/exit.module';
+import { EngagementModule } from './engagement/engagement.module';
 
 @Module({
   imports: [
@@ -26,6 +31,11 @@ import { RecruitmentModule } from './recruitment/recruitment.module';
     LeaveModule,
     PayrollModule,
     RecruitmentModule,
+    PerformanceModule,
+    LearningModule,
+    AssetsModule,
+    ExitModule,
+    EngagementModule,
   ],
   controllers: [HealthController],
   providers: [
