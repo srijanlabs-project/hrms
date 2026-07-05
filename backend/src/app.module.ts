@@ -12,6 +12,7 @@ import { AttendanceModule } from './attendance/attendance.module';
 import { LeaveModule } from './leave/leave.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { HealthController } from './health.controller';
+import { RecruitmentModule } from './recruitment/recruitment.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { HealthController } from './health.controller';
     AttendanceModule,
     LeaveModule,
     PayrollModule,
+    RecruitmentModule,
   ],
   controllers: [HealthController],
   providers: [
