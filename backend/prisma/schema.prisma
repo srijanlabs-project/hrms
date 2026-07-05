@@ -1,0 +1,1314 @@
+// Srijan Labs — HRMS Platform
+// Prisma schema assembled from:
+//   - HRMS Engineering Specification v0.2 (foundation: Tenant/User/Role/Employee/Approvals)
+//   - HRMS-Attendance-Build-Spec, HRMS-Leave-Management-Build-Spec, HRMS-Payroll-Build-Spec
+//   - HRMS-Recruitment-Build-Spec, HRMS-Performance-Build-Spec, HRMS-Learning-Build-Spec
+//   - HRMS-Assets-Build-Spec, HRMS-Exit-Build-Spec, HRMS-Engagement-Build-Spec
+//
+// Row-level security policies are NOT expressible in Prisma schema — they are added as raw SQL
+// in prisma/migrations/<ts>_rls_policies/migration.sql. app.current_tenant_id is set per-request
+// by the tenant-context middleware (see src/common/tenant) from the authenticated JWT, never
+// accepted as a client parameter.
+//
+// A few columns marked "computed (DB generated)" below are plain columns here; the migration
+// SQL promotes them to `GENERATED ALWAYS AS (...) STORED` so they cannot drift from application
+// logic, per the module specs' acceptance criteria.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =========================================================================
+// FOUNDATION — Identity & Employee Core (Engineering Spec §4.1)
+// =========================================================================
+
+enum TenantTier {
+  core_hr
+  growth
+  enterprise
+}
+
+enum TenantStatus {
+  trial
+  active
+  suspended
+  churned
+}
+
+model Tenant {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String
+  subdomain          String       @unique
+  tier               TenantTier   @default(core_hr)
+  status             TenantStatus @default(trial)
+  billingCycleStart  DateTime?    @map("billing_cycle_start") @db.Date
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  users              User[]
+  employees          Employee[]
+  departments        Department[]
+  designations       Designation[]
+  locations          Location[]
+
+  @@map("tenants")
+}
+
+model Role {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String?  @map("tenant_id") @db.Uuid
+  name         String
+  isSystemRole Boolean  @default(false) @map("is_system_role")
+  permissions  Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  users        User[]
+
+  @@unique([tenantId, name])
+  @@map("roles")
+}
+
+model User {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String?   @map("tenant_id") @db.Uuid
+  mobileNumber  String    @unique @map("mobile_number")
+  email         String?
+  passwordHash  String?   @map("password_hash")
+  roleId        String    @map("role_id") @db.Uuid
+  employeeId    String?   @unique @map("employee_id") @db.Uuid
+  lastLoginAt   DateTime? @map("last_login_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  tenant        Tenant?   @relation(fields: [tenantId], references: [id])
+  role          Role      @relation(fields: [roleId], references: [id])
+  employee      Employee? @relation(fields: [employeeId], references: [id])
+
+  createdClearanceTasks ClearanceTask[]      @relation("ClearanceAssignee")
+  approvedPayrollRuns   PayrollRun[]         @relation("PayrollApprovedBy")
+  auditLogs             AuditLog[]
+
+  @@map("users")
+}
+
+model OtpChallenge {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  mobileNumber String  @map("mobile_number")
+  otpHash     String   @map("otp_hash")
+  expiresAt   DateTime @map("expires_at")
+  consumedAt  DateTime? @map("consumed_at")
+  attempts    Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([mobileNumber])
+  @@map("otp_challenges")
+}
+
+enum EmploymentStatus {
+  pre_boarding
+  active
+  on_notice
+  on_leave_extended
+  exited
+}
+
+enum EmploymentType {
+  full_time
+  part_time
+  contract
+  intern
+}
+
+enum Gender {
+  male
+  female
+  other
+}
+
+model Department {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  parentId  String?  @map("parent_id") @db.Uuid
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  parent    Department? @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  children  Department[] @relation("DepartmentHierarchy")
+  employees Employee[]
+
+  @@map("departments")
+}
+
+model Designation {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  name              String
+  noticePeriodDays  Int      @default(30) @map("notice_period_days")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  employees Employee[]
+
+  @@map("designations")
+}
+
+model Location {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String   @map("tenant_id") @db.Uuid
+  name                 String
+  state                String?
+  isActive             Boolean  @default(true) @map("is_active")
+  geofenceLatitude     Decimal? @map("geofence_latitude") @db.Decimal(9, 6)
+  geofenceLongitude    Decimal? @map("geofence_longitude") @db.Decimal(9, 6)
+  geofenceRadiusMeters Int?     @map("geofence_radius_meters")
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  employees  Employee[]
+  holidays   Holiday[]
+
+  @@map("locations")
+}
+
+model Holiday {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  locationId String   @map("location_id") @db.Uuid
+  name       String
+  date       DateTime @db.Date
+
+  location   Location @relation(fields: [locationId], references: [id])
+
+  @@unique([locationId, date])
+  @@map("holidays")
+}
+
+model Employee {
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String            @map("tenant_id") @db.Uuid
+  employeeCode          String            @map("employee_code")
+  firstName             String            @map("first_name")
+  lastName              String?           @map("last_name")
+  dateOfBirth           DateTime?         @map("date_of_birth") @db.Date
+  gender                Gender?
+  personalEmail         String?           @map("personal_email")
+  phone                 String?
+  departmentId          String?           @map("department_id") @db.Uuid
+  designationId         String?           @map("designation_id") @db.Uuid
+  managerId             String?           @map("manager_id") @db.Uuid
+  dateOfJoining         DateTime          @map("date_of_joining") @db.Date
+  dateOfExit            DateTime?         @map("date_of_exit") @db.Date
+  employmentStatus      EmploymentStatus  @default(pre_boarding) @map("employment_status")
+  employmentType        EmploymentType    @map("employment_type")
+  workLocationId        String?           @map("work_location_id") @db.Uuid
+  birthdayOptOut        Boolean           @default(false) @map("birthday_opt_out")
+  customFields          Json              @default("{}") @map("custom_fields")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  tenant        Tenant       @relation(fields: [tenantId], references: [id])
+  department    Department?  @relation(fields: [departmentId], references: [id])
+  designation   Designation? @relation(fields: [designationId], references: [id])
+  workLocation  Location?    @relation(fields: [workLocationId], references: [id])
+  manager       Employee?    @relation("EmployeeManager", fields: [managerId], references: [id])
+  reports       Employee[]   @relation("EmployeeManager")
+  user          User?
+  documents     Document[]
+  bankAccount   EmployeeBankAccount?
+
+  @@unique([tenantId, employeeCode])
+  @@map("employees")
+}
+
+// Gap flagged in the platform-level review: no bank/payout entity existed even though
+// Payroll's disbursement file (§8 of the Payroll spec) requires account number + IFSC.
+model EmployeeBankAccount {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  employeeId    String   @unique @map("employee_id") @db.Uuid
+  accountHolder String   @map("account_holder_name")
+  accountNumber String   @map("account_number")
+  ifsc          String
+  bankName      String?  @map("bank_name")
+  isVerified    Boolean  @default(false) @map("is_verified")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("employee_bank_accounts")
+}
+
+enum DocType {
+  id_proof
+  contract
+  certificate
+  offer_letter
+  other
+}
+
+model Document {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  employeeId  String    @map("employee_id") @db.Uuid
+  docType     DocType   @map("doc_type")
+  fileUrl     String    @map("file_url")
+  expiryDate  DateTime? @map("expiry_date") @db.Date
+  verified    Boolean   @default(false)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("documents")
+}
+
+// Gap flagged in the platform-level review: §2.1 of the engineering spec promises an
+// append-only audit log with before/after diff, but it wasn't modeled as an entity.
+model AuditLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id") @db.Uuid
+  action      String
+  beforeValue Json?    @map("before_value")
+  afterValue  Json?    @map("after_value")
+  comment     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([tenantId, entityType, entityId])
+  @@map("audit_logs")
+}
+
+// =========================================================================
+// APPROVALS ENGINE (Engineering Spec §4.4) — shared primitive
+// =========================================================================
+
+enum ApprovalApplicability {
+  leave
+  regularization
+  expense
+  requisition
+  loan
+}
+
+model ApprovalChain {
+  id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String                @map("tenant_id") @db.Uuid
+  name         String
+  appliesTo    ApprovalApplicability @map("applies_to")
+  steps        Json                  // [{ approverType: manager|role|specific_user, roleId?, userId?, escalationHours }]
+  isActive     Boolean               @default(true) @map("is_active")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+
+  instances ApprovalInstance[]
+
+  @@map("approval_chains")
+}
+
+enum ApprovalInstanceStatus {
+  pending
+  approved
+  rejected
+  escalated
+}
+
+model ApprovalInstance {
+  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String                  @map("tenant_id") @db.Uuid
+  approvalChainId String                  @map("approval_chain_id") @db.Uuid
+  currentStep     Int                     @default(0) @map("current_step")
+  status          ApprovalInstanceStatus  @default(pending)
+  stepHistory     Json                    @default("[]") @map("step_history")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+
+  chain ApprovalChain @relation(fields: [approvalChainId], references: [id])
+
+  regularizationRequest RegularizationRequest?
+  leaveRequest          LeaveRequest?
+  loanAdvance           LoanAdvance?
+  jobRequisition        JobRequisition?
+
+  @@map("approval_instances")
+}
+
+// =========================================================================
+// ATTENDANCE (HRMS-Attendance-Build-Spec v1.0)
+// =========================================================================
+
+model ShiftPolicy {
+  id                         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                   String   @map("tenant_id") @db.Uuid
+  name                       String
+  startTime                  DateTime @map("start_time") @db.Time
+  endTime                    DateTime @map("end_time") @db.Time
+  graceMinutes               Int      @default(0) @map("grace_minutes")
+  halfDayThresholdMinutes    Int      @default(240) @map("half_day_threshold_minutes")
+  weeklyOffDays              Int[]    @default([0, 6]) @map("weekly_off_days")
+  overtimeEnabled            Boolean  @default(false) @map("overtime_enabled")
+  overtimeThresholdMinutes   Int?     @map("overtime_threshold_minutes")
+  overtimeMultiplier         Decimal  @default(1.5) @map("overtime_multiplier") @db.Decimal(3, 2)
+  applicableDepartmentIds    String[] @default([]) @map("applicable_department_ids") @db.Uuid
+  isDefault                  Boolean  @default(false) @map("is_default")
+  createdAt                  DateTime @default(now()) @map("created_at")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
+
+  attendanceRecords AttendanceRecord[]
+
+  @@unique([tenantId, name])
+  @@map("shift_policies")
+}
+
+enum CheckInSource {
+  web
+  gps
+  qr
+  biometric
+  manual
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  half_day
+  on_leave
+  holiday
+  week_off
+  pending
+}
+
+model AttendanceRecord {
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String            @map("tenant_id") @db.Uuid
+  employeeId            String            @map("employee_id") @db.Uuid
+  date                  DateTime          @db.Date
+  shiftPolicyId         String            @map("shift_policy_id") @db.Uuid
+  checkIn               DateTime?         @map("check_in")
+  checkOut              DateTime?         @map("check_out")
+  checkInSource         CheckInSource?    @map("check_in_source")
+  checkInLatitude       Decimal?          @map("check_in_latitude") @db.Decimal(9, 6)
+  checkInLongitude      Decimal?          @map("check_in_longitude") @db.Decimal(9, 6)
+  workedMinutes         Int               @default(0) @map("worked_minutes")
+  status                AttendanceStatus  @default(absent)
+  isLate                Boolean           @default(false) @map("is_late")
+  overtimeMinutes        Int              @default(0) @map("overtime_minutes")
+  isRegularized          Boolean          @default(false) @map("is_regularized")
+  sourceLeaveRequestId   String?          @map("source_leave_request_id") @db.Uuid
+  createdAt              DateTime         @default(now()) @map("created_at")
+  updatedAt              DateTime         @updatedAt @map("updated_at")
+
+  shiftPolicy ShiftPolicy @relation(fields: [shiftPolicyId], references: [id])
+  regularizationRequests RegularizationRequest[]
+
+  @@unique([employeeId, date])
+  @@map("attendance_records")
+}
+
+enum RegularizationStatus {
+  pending
+  approved
+  rejected
+}
+
+model RegularizationRequest {
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String                @map("tenant_id") @db.Uuid
+  attendanceRecordId   String                @map("attendance_record_id") @db.Uuid
+  requestedCheckIn     DateTime?             @map("requested_check_in")
+  requestedCheckOut    DateTime?             @map("requested_check_out")
+  requestedStatus      AttendanceStatus?     @map("requested_status")
+  reason               String
+  status               RegularizationStatus  @default(pending)
+  approvalInstanceId   String?               @unique @map("approval_instance_id") @db.Uuid
+  submittedAt          DateTime              @default(now()) @map("submitted_at")
+
+  attendanceRecord AttendanceRecord  @relation(fields: [attendanceRecordId], references: [id])
+  approvalInstance ApprovalInstance? @relation(fields: [approvalInstanceId], references: [id])
+
+  @@map("regularization_requests")
+}
+
+// Biometric device -> employee mapping (referenced by §5.4 of the Attendance spec)
+model BiometricDevice {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  deviceId   String   @map("device_id")
+  apiKeyHash String   @map("api_key_hash")
+  isActive   Boolean  @default(true) @map("is_active")
+
+  userMappings BiometricUserMapping[]
+
+  @@unique([tenantId, deviceId])
+  @@map("biometric_devices")
+}
+
+model BiometricUserMapping {
+  id              String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  biometricDeviceId String @map("biometric_device_id") @db.Uuid
+  deviceUserCode  String @map("device_user_code")
+  employeeId      String @map("employee_id") @db.Uuid
+
+  device BiometricDevice @relation(fields: [biometricDeviceId], references: [id])
+
+  @@unique([biometricDeviceId, deviceUserCode])
+  @@map("biometric_user_mappings")
+}
+
+// =========================================================================
+// LEAVE MANAGEMENT (HRMS-Leave-Management-Build-Spec v1.0)
+// =========================================================================
+
+enum LeaveAccrualFrequency {
+  monthly
+  yearly
+  none
+}
+
+enum ApplicableGender {
+  all
+  male
+  female
+}
+
+model LeaveType {
+  id                        String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                  String                 @map("tenant_id") @db.Uuid
+  name                      String
+  code                      String
+  accrualFrequency          LeaveAccrualFrequency  @default(yearly) @map("accrual_frequency")
+  accrualRate               Decimal                @default(0) @map("accrual_rate") @db.Decimal(6, 2)
+  accrualDayOfMonth         Int?                   @map("accrual_day_of_month")
+  maxBalance                Decimal?               @map("max_balance") @db.Decimal(6, 2)
+  maxCarryForward           Decimal                @default(0) @map("max_carry_forward") @db.Decimal(6, 2)
+  encashable                Boolean                @default(false)
+  encashmentMaxDays         Decimal?               @map("encashment_max_days") @db.Decimal(6, 2)
+  requiresDocumentAboveDays Int?                   @map("requires_document_above_days")
+  allowNegativeBalance      Boolean                @default(false) @map("allow_negative_balance")
+  allowHalfDay              Boolean                @default(true) @map("allow_half_day")
+  minDaysNotice             Int                    @default(0) @map("min_days_notice")
+  maxConsecutiveDays        Int?                   @map("max_consecutive_days")
+  applicableGender          ApplicableGender       @default(all) @map("applicable_gender")
+  applicableEmploymentTypes String[]               @default([]) @map("applicable_employment_types")
+  isActive                  Boolean                @default(true) @map("is_active")
+  createdAt                 DateTime               @default(now()) @map("created_at")
+  updatedAt                 DateTime               @updatedAt @map("updated_at")
+
+  balances LeaveBalance[]
+  requests LeaveRequest[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, code])
+  @@map("leave_types")
+}
+
+model LeaveBalance {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  employeeId      String   @map("employee_id") @db.Uuid
+  leaveTypeId     String   @map("leave_type_id") @db.Uuid
+  period          String   // 'YYYY-MM' or 'YYYY'
+  openingBalance  Decimal  @default(0) @map("opening_balance") @db.Decimal(6, 2)
+  accrued         Decimal  @default(0) @db.Decimal(6, 2)
+  used            Decimal  @default(0) @db.Decimal(6, 2)
+  adjusted        Decimal  @default(0) @db.Decimal(6, 2)
+  // Real Postgres GENERATED ALWAYS column (see migration 20260704202858) — Unsupported
+  // so Prisma's migrate diff stops trying to "fix" it back to a plain column on every
+  // future migration. Not queryable via the normal Prisma Client API as a result —
+  // read it with $queryRaw, or just recompute opening+accrued+adjusted-used in code
+  // (LeaveBalanceService does the latter; Postgres remains the enforced source of
+  // truth for anyone querying the table directly, e.g. reporting).
+  balance         Unsupported("decimal(6,2)")?
+
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@unique([employeeId, leaveTypeId, period])
+  @@map("leave_balances")
+}
+
+enum LeaveRequestStatus {
+  pending
+  approved
+  rejected
+  cancellation_pending
+  cancelled
+  withdrawn
+}
+
+model LeaveRequest {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String              @map("tenant_id") @db.Uuid
+  employeeId         String              @map("employee_id") @db.Uuid
+  leaveTypeId        String              @map("leave_type_id") @db.Uuid
+  startDate          DateTime            @map("start_date") @db.Date
+  endDate            DateTime            @map("end_date") @db.Date
+  isStartHalfDay     Boolean             @default(false) @map("is_start_half_day")
+  isEndHalfDay       Boolean             @default(false) @map("is_end_half_day")
+  totalDays          Decimal             @map("total_days") @db.Decimal(4, 1)
+  reason             String
+  documentUrl        String?             @map("document_url")
+  status             LeaveRequestStatus  @default(pending)
+  approvalInstanceId String?             @unique @map("approval_instance_id") @db.Uuid
+  appliedAt          DateTime            @default(now()) @map("applied_at")
+  decidedAt          DateTime?           @map("decided_at")
+  decisionComment    String?             @map("decision_comment")
+  version            Int                 @default(1)
+
+  leaveType        LeaveType         @relation(fields: [leaveTypeId], references: [id])
+  approvalInstance ApprovalInstance? @relation(fields: [approvalInstanceId], references: [id])
+
+  @@map("leave_requests")
+}
+
+// =========================================================================
+// PAYROLL (HRMS-Payroll-Build-Spec v1.0)
+// ⚠ PF/ESI/PT/TDS rates below are illustrative placeholders — verify against
+// current EPFO/ESIC/state-PT/IT-Act notifications before go-live. Stored as
+// tenant-independent, versioned statutory_parameters — never hardcoded.
+// =========================================================================
+
+model SalaryStructure {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  name       String
+  components Json     // [{code,name,type:earning|deduction|employer_contribution,calcType,value,taxable,pfApplicable,esiApplicable}]
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  compensations EmployeeCompensation[]
+  offers        Offer[]
+
+  @@unique([tenantId, name])
+  @@map("salary_structures")
+}
+
+enum TaxRegime {
+  old
+  new
+}
+
+model EmployeeCompensation {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String    @map("tenant_id") @db.Uuid
+  employeeId          String    @map("employee_id") @db.Uuid
+  salaryStructureId   String    @map("salary_structure_id") @db.Uuid
+  annualCtc           Decimal   @map("annual_ctc") @db.Decimal(12, 2)
+  effectiveFrom       DateTime  @map("effective_from") @db.Date
+  effectiveTo         DateTime? @map("effective_to") @db.Date
+  resolvedComponents  Json      @map("resolved_components")
+  taxRegime           TaxRegime @default(new) @map("tax_regime")
+  pfOptedOut          Boolean   @default(false) @map("pf_opted_out")
+
+  salaryStructure SalaryStructure @relation(fields: [salaryStructureId], references: [id])
+
+  @@map("employee_compensations")
+  // Partial unique (employee_id) WHERE effective_to IS NULL added via raw SQL migration.
+}
+
+enum PayrollRunType {
+  regular
+  full_and_final
+  off_cycle
+}
+
+enum PayrollRunStatus {
+  draft
+  processing
+  review
+  approved
+  disbursed
+  closed
+  failed
+}
+
+model PayrollRun {
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String            @map("tenant_id") @db.Uuid
+  period                String            // 'YYYY-MM'
+  runType               PayrollRunType    @default(regular) @map("run_type")
+  status                PayrollRunStatus  @default(draft)
+  processedAt           DateTime?         @map("processed_at")
+  approvedAt            DateTime?         @map("approved_at")
+  disbursedAt           DateTime?         @map("disbursed_at")
+  approvedByUserId      String?           @map("approved_by") @db.Uuid
+  totalGross            Decimal           @default(0) @map("total_gross") @db.Decimal(14, 2)
+  totalDeductions       Decimal           @default(0) @map("total_deductions") @db.Decimal(14, 2)
+  totalNet              Decimal           @default(0) @map("total_net") @db.Decimal(14, 2)
+  disbursementFileUrl   String?           @map("disbursement_file_url")
+  exitRequestId         String?           @unique @map("exit_request_id") @db.Uuid
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  approvedBy User? @relation("PayrollApprovedBy", fields: [approvedByUserId], references: [id])
+  payslips   Payslip[]
+  exitRequest ExitRequest? @relation(fields: [exitRequestId], references: [id])
+
+  @@unique([tenantId, period, runType])
+  @@map("payroll_runs")
+}
+
+enum PayslipStatus {
+  generated
+  held
+  paid
+}
+
+model Payslip {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String        @map("tenant_id") @db.Uuid
+  payrollRunId     String        @map("payroll_run_id") @db.Uuid
+  employeeId       String        @map("employee_id") @db.Uuid
+  grossEarnings    Decimal       @map("gross_earnings") @db.Decimal(12, 2)
+  totalDeductions  Decimal       @map("total_deductions") @db.Decimal(12, 2)
+  netPay           Decimal       @map("net_pay") @db.Decimal(12, 2)
+  lopDays          Decimal       @default(0) @map("lop_days") @db.Decimal(4, 1)
+  overtimeMinutes  Int           @default(0) @map("overtime_minutes")
+  lineItems        Json          @map("line_items")
+  status           PayslipStatus @default(generated)
+  pdfUrl           String?       @map("pdf_url")
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  payrollRun          PayrollRun            @relation(fields: [payrollRunId], references: [id])
+  statutoryDeductions StatutoryDeduction[]
+
+  @@unique([payrollRunId, employeeId])
+  @@map("payslips")
+}
+
+enum StatutoryDeductionType {
+  pf_employee
+  pf_employer
+  eps_employer
+  esi_employee
+  esi_employer
+  pt
+  tds
+  gratuity_accrual
+}
+
+model StatutoryDeduction {
+  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payslipId         String                  @map("payslip_id") @db.Uuid
+  type              StatutoryDeductionType
+  amount            Decimal                 @db.Decimal(10, 2)
+  computationBasis  Json                    @map("computation_basis")
+
+  payslip Payslip @relation(fields: [payslipId], references: [id])
+
+  @@map("statutory_deductions")
+}
+
+enum LoanAdvanceType {
+  loan
+  advance
+  reimbursement
+}
+
+enum LoanAdvanceStatus {
+  pending
+  approved
+  rejected
+  active
+  closed
+}
+
+model LoanAdvance {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String            @map("tenant_id") @db.Uuid
+  employeeId          String            @map("employee_id") @db.Uuid
+  type                LoanAdvanceType
+  amount              Decimal           @db.Decimal(10, 2)
+  installments        Int?
+  installmentsPaid    Int               @default(0) @map("installments_paid")
+  status              LoanAdvanceStatus @default(pending)
+  approvalInstanceId  String?           @unique @map("approval_instance_id") @db.Uuid
+
+  approvalInstance ApprovalInstance? @relation(fields: [approvalInstanceId], references: [id])
+
+  @@map("loan_advances")
+}
+
+// Versioned statutory parameters — a rate/ceiling change is a new row, never a deploy.
+model StatutoryParameter {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key            String   // e.g. pf_wage_ceiling, pf_employee_rate, esi_wage_threshold, eps_rate
+  value          Decimal  @db.Decimal(12, 4)
+  effectiveFrom  DateTime @map("effective_from") @db.Date
+
+  @@unique([key, effectiveFrom])
+  @@map("statutory_parameters")
+}
+
+// Slab-based Professional Tax lookup, versioned by state + effective_from (spec §3.3)
+model StatutoryPtSlab {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  state             String
+  monthlyGrossMin   Decimal  @map("monthly_gross_min") @db.Decimal(10, 2)
+  monthlyGrossMax   Decimal? @map("monthly_gross_max") @db.Decimal(10, 2)
+  ptAmount          Decimal  @map("pt_amount") @db.Decimal(6, 2)
+  monthOverride     Int?     @map("month_override") // e.g. Feb=2 in Maharashtra charges 300 instead of 200
+  effectiveFrom     DateTime @map("effective_from") @db.Date
+
+  @@map("statutory_pt_slabs")
+}
+
+// TDS slab tables per fiscal year + regime (spec §3.4)
+model StatutoryTdsSlab {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fiscalYear    String    @map("fiscal_year") // e.g. '2026-27'
+  taxRegime     TaxRegime @map("tax_regime")
+  incomeMin     Decimal   @map("income_min") @db.Decimal(12, 2)
+  incomeMax     Decimal?  @map("income_max") @db.Decimal(12, 2)
+  ratePercent   Decimal   @map("rate_percent") @db.Decimal(5, 2)
+
+  @@map("statutory_tds_slabs")
+}
+
+// =========================================================================
+// RECRUITMENT / ATS (HRMS-Recruitment-Build-Spec v1.0)
+// =========================================================================
+
+enum RequisitionStatus {
+  draft
+  pending_approval
+  approved
+  open
+  on_hold
+  closed
+}
+
+model JobRequisition {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String            @map("tenant_id") @db.Uuid
+  title              String
+  departmentId       String            @map("department_id") @db.Uuid
+  headcount           Int
+  employmentType      EmploymentType   @map("employment_type")
+  budgetCtcMax        Decimal?         @map("budget_ctc_max") @db.Decimal(12, 2)
+  status              RequisitionStatus @default(draft)
+  approvalInstanceId  String?           @unique @map("approval_instance_id") @db.Uuid
+  requestedByUserId   String            @map("requested_by") @db.Uuid
+  targetCloseDate     DateTime?         @map("target_close_date") @db.Date
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  approvalInstance ApprovalInstance? @relation(fields: [approvalInstanceId], references: [id])
+  candidates       Candidate[]
+
+  @@map("job_requisitions")
+}
+
+enum CandidateSource {
+  career_page
+  referral
+  job_board
+  manual
+}
+
+enum CandidateStage {
+  applied
+  screening
+  interview
+  offer
+  hired
+  rejected
+  withdrawn
+}
+
+model Candidate {
+  id                     String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String          @map("tenant_id") @db.Uuid
+  requisitionId          String          @map("requisition_id") @db.Uuid
+  name                   String
+  email                  String?
+  phone                  String?
+  resumeUrl              String?         @map("resume_url")
+  source                 CandidateSource @default(manual)
+  currentStage           CandidateStage  @default(applied) @map("current_stage")
+  rejectionReason        String?         @map("rejection_reason")
+  referredByEmployeeId   String?         @map("referred_by_employee_id") @db.Uuid
+  hiredEmployeeId        String?         @map("hired_employee_id") @db.Uuid
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+
+  requisition JobRequisition @relation(fields: [requisitionId], references: [id])
+  interviews  InterviewFeedback[]
+  offers      Offer[]
+
+  @@map("candidates")
+}
+
+enum InterviewRecommendation {
+  strong_yes
+  yes
+  no
+  strong_no
+}
+
+model InterviewFeedback {
+  id             String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  candidateId    String                    @map("candidate_id") @db.Uuid
+  interviewerId  String                    @map("interviewer_id") @db.Uuid
+  scheduledAt    DateTime                  @map("scheduled_at")
+  scorecard      Json                      @default("[]") // [{criterion,score,comment}]
+  recommendation InterviewRecommendation?
+  submittedAt    DateTime?                 @map("submitted_at")
+
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+
+  @@unique([candidateId, interviewerId, scheduledAt])
+  @@map("interview_feedback")
+}
+
+enum OfferStatus {
+  draft
+  sent
+  accepted
+  declined
+  expired
+  withdrawn
+}
+
+model Offer {
+  id                 String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  candidateId        String      @unique @map("candidate_id") @db.Uuid
+  salaryStructureId  String      @map("salary_structure_id") @db.Uuid
+  annualCtc          Decimal     @map("annual_ctc") @db.Decimal(12, 2)
+  proposedDoj        DateTime    @map("proposed_doj") @db.Date
+  status             OfferStatus @default(draft)
+  sentAt             DateTime?   @map("sent_at")
+  respondedAt        DateTime?   @map("responded_at")
+  esignReference     String?     @map("esign_reference")
+  expiryDate         DateTime    @map("expiry_date") @db.Date
+
+  candidate       Candidate       @relation(fields: [candidateId], references: [id])
+  salaryStructure SalaryStructure @relation(fields: [salaryStructureId], references: [id])
+
+  @@map("offers")
+}
+
+// =========================================================================
+// PERFORMANCE MANAGEMENT (HRMS-Performance-Build-Spec v1.0)
+// =========================================================================
+
+enum GoalType {
+  okr
+  kra
+}
+
+enum GoalStatus {
+  active
+  completed
+  missed
+  cancelled
+}
+
+model Goal {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String     @map("tenant_id") @db.Uuid
+  employeeId      String     @map("employee_id") @db.Uuid
+  parentGoalId    String?    @map("parent_goal_id") @db.Uuid
+  cycleId         String     @map("cycle_id") @db.Uuid
+  title           String
+  type            GoalType
+  targetValue     Decimal?   @map("target_value") @db.Decimal(10, 2)
+  currentValue    Decimal?   @map("current_value") @db.Decimal(10, 2)
+  weightPercent   Int        @default(100) @map("weight_percent")
+  status          GoalStatus @default(active)
+  progressPercent Int        @default(0) @map("progress_percent")
+
+  parent Goal? @relation("GoalCascade", fields: [parentGoalId], references: [id])
+  children Goal[] @relation("GoalCascade")
+  cycle ReviewCycle @relation(fields: [cycleId], references: [id])
+
+  @@map("goals")
+}
+
+enum CycleStatus {
+  planned
+  goals_open
+  self_review
+  manager_review
+  calibration
+  closed
+}
+
+model ReviewCycle {
+  id                    String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String      @map("tenant_id") @db.Uuid
+  name                  String
+  periodStart           DateTime    @map("period_start") @db.Date
+  periodEnd             DateTime    @map("period_end") @db.Date
+  selfReviewStart       DateTime    @map("self_review_start")
+  selfReviewEnd         DateTime    @map("self_review_end")
+  managerReviewStart    DateTime    @map("manager_review_start")
+  managerReviewEnd      DateTime    @map("manager_review_end")
+  calibrationStart      DateTime?   @map("calibration_start")
+  calibrationEnd        DateTime?   @map("calibration_end")
+  status                CycleStatus @default(planned)
+  requireSelfFirst      Boolean     @default(true) @map("require_self_first")
+
+  goals   Goal[]
+  reviews PerformanceReview[]
+
+  @@map("review_cycles")
+}
+
+enum PerformanceReviewStatus {
+  pending
+  self_submitted
+  manager_submitted
+  calibrated
+  acknowledged
+}
+
+model PerformanceReview {
+  id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cycleId          String                  @map("cycle_id") @db.Uuid
+  employeeId       String                  @map("employee_id") @db.Uuid
+  selfRating       Decimal?                @map("self_rating") @db.Decimal(2, 1)
+  selfComments     String?                 @map("self_comments")
+  managerRating    Decimal?                @map("manager_rating") @db.Decimal(2, 1)
+  managerComments  String?                 @map("manager_comments")
+  peerRatings      Json?                   @map("peer_ratings") // [{reviewerId,rating,comments}]
+  calibratedRating Decimal?                @map("calibrated_rating") @db.Decimal(2, 1)
+  // Real Postgres GENERATED ALWAYS column (see migration 20260704202858) — Unsupported,
+  // same reasoning as LeaveBalance.balance above.
+  finalRating      Unsupported("decimal(2,1)")? @map("final_rating")
+  status           PerformanceReviewStatus @default(pending)
+
+  cycle ReviewCycle @relation(fields: [cycleId], references: [id])
+
+  @@unique([cycleId, employeeId])
+  @@map("performance_reviews")
+}
+
+// =========================================================================
+// LEARNING & DEVELOPMENT (HRMS-Learning-Build-Spec v1.0)
+// =========================================================================
+
+model Course {
+  id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                 String   @map("tenant_id") @db.Uuid
+  title                    String
+  description              String?
+  contentUrl               String?  @map("content_url")
+  durationMinutes          Int?     @map("duration_minutes")
+  category                 String?
+  isMandatory              Boolean  @default(false) @map("is_mandatory")
+  applicableDepartmentIds  String[] @default([]) @map("applicable_department_ids") @db.Uuid
+  isActive                 Boolean  @default(true) @map("is_active")
+
+  assignments TrainingAssignment[]
+
+  @@map("courses")
+}
+
+enum TrainingStatus {
+  assigned
+  in_progress
+  completed
+  overdue
+}
+
+model TrainingAssignment {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String         @map("tenant_id") @db.Uuid
+  courseId          String         @map("course_id") @db.Uuid
+  employeeId        String         @map("employee_id") @db.Uuid
+  assignedByUserId  String?        @map("assigned_by") @db.Uuid
+  dueDate           DateTime?      @map("due_date") @db.Date
+  status            TrainingStatus @default(assigned)
+  completedAt       DateTime?      @map("completed_at")
+  feedbackRating    Int?           @map("feedback_rating")
+  feedbackComments  String?        @map("feedback_comments")
+
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([courseId, employeeId])
+  @@map("training_assignments")
+}
+
+model Certification {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  employeeId       String    @map("employee_id") @db.Uuid
+  name             String
+  issuingBody      String?   @map("issuing_body")
+  issuedDate       DateTime  @map("issued_date") @db.Date
+  expiryDate       DateTime? @map("expiry_date") @db.Date
+  documentUrl      String?   @map("document_url")
+  reminderSentAt   DateTime? @map("reminder_sent_at")
+
+  @@map("certifications")
+}
+
+// =========================================================================
+// ASSETS & IT MANAGEMENT (HRMS-Assets-Build-Spec v1.0)
+// =========================================================================
+
+enum AssetType {
+  laptop
+  mobile
+  monitor
+  id_card
+  vehicle
+  other
+}
+
+enum AssetStatus {
+  in_stock
+  allocated
+  under_repair
+  retired
+  lost
+}
+
+model Asset {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String      @map("tenant_id") @db.Uuid
+  assetTag       String      @map("asset_tag")
+  type           AssetType
+  makeModel      String?     @map("make_model")
+  serialNumber   String?     @map("serial_number")
+  purchaseDate   DateTime?   @map("purchase_date") @db.Date
+  purchaseValue  Decimal?    @map("purchase_value") @db.Decimal(10, 2)
+  status         AssetStatus @default(in_stock)
+
+  allocations AssetAllocation[]
+
+  @@unique([tenantId, assetTag])
+  @@unique([tenantId, serialNumber])
+  @@map("assets")
+}
+
+enum AllocationCondition {
+  good
+  damaged
+  not_returned
+}
+
+model AssetAllocation {
+  id                     String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String                @map("tenant_id") @db.Uuid
+  assetId                String                @map("asset_id") @db.Uuid
+  employeeId             String                @map("employee_id") @db.Uuid
+  allocatedOn            DateTime              @map("allocated_on") @db.Date
+  expectedReturnOn       DateTime?             @map("expected_return_on") @db.Date
+  returnedOn             DateTime?             @map("returned_on") @db.Date
+  conditionOnReturn      AllocationCondition?  @map("condition_on_return")
+  acknowledgementSigned  Boolean               @default(false) @map("acknowledgement_signed")
+
+  asset Asset @relation(fields: [assetId], references: [id])
+
+  @@map("asset_allocations")
+  // Partial unique (asset_id) WHERE returned_on IS NULL added via raw SQL migration.
+}
+
+enum ITAccessTrigger {
+  joining
+  department_transfer
+  exit
+}
+
+enum ITAccessStatus {
+  pending
+  in_progress
+  completed
+}
+
+model ItAccessRequest {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String          @map("tenant_id") @db.Uuid
+  employeeId    String          @map("employee_id") @db.Uuid
+  triggerEvent  ITAccessTrigger @map("trigger_event")
+  accessItems   Json            @map("access_items") // [{system, action: grant|revoke, status}]
+  status        ITAccessStatus  @default(pending)
+  completedAt   DateTime?       @map("completed_at")
+
+  @@map("it_access_requests")
+}
+
+// =========================================================================
+// EXIT MANAGEMENT (HRMS-Exit-Build-Spec v1.0)
+// =========================================================================
+
+enum ExitInitiatedBy {
+  employee
+  hr_admin
+}
+
+enum ExitStatus {
+  notice_period
+  clearance_pending
+  cleared
+  withdrawn
+}
+
+model ExitRequest {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String          @map("tenant_id") @db.Uuid
+  employeeId        String          @map("employee_id") @db.Uuid
+  initiatedBy       ExitInitiatedBy @map("initiated_by")
+  resignationDate   DateTime        @map("resignation_date") @db.Date
+  noticePeriodDays  Int             @map("notice_period_days")
+  lastWorkingDay    DateTime        @map("last_working_day") @db.Date
+  reasonCategory    String?         @map("reason_category")
+  reasonNotes       String?         @map("reason_notes")
+  status            ExitStatus      @default(notice_period)
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  clearanceTasks ClearanceTask[]
+  exitInterview  ExitInterview?
+  payrollRun     PayrollRun?
+
+  @@map("exit_requests")
+}
+
+enum ClearanceDept {
+  it
+  finance
+  admin
+  manager
+  hr
+}
+
+enum ClearanceStatus {
+  pending
+  cleared
+  blocked
+}
+
+model ClearanceTask {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  exitRequestId   String          @map("exit_request_id") @db.Uuid
+  department      ClearanceDept
+  assigneeUserId  String          @map("assignee_id") @db.Uuid
+  checklistItems  Json            @default("[]") @map("checklist_items") // [{label, done}]
+  status          ClearanceStatus @default(pending)
+  blockedReason   String?         @map("blocked_reason")
+  clearedAt       DateTime?       @map("cleared_at")
+
+  exitRequest ExitRequest @relation(fields: [exitRequestId], references: [id])
+  assignee    User        @relation("ClearanceAssignee", fields: [assigneeUserId], references: [id])
+
+  @@unique([exitRequestId, department])
+  @@map("clearance_tasks")
+}
+
+enum ExitSentiment {
+  positive
+  neutral
+  negative
+}
+
+model ExitInterview {
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  exitRequestId      String         @unique @map("exit_request_id") @db.Uuid
+  conductedByUserId  String?        @map("conducted_by") @db.Uuid
+  responses          Json           @default("[]") // [{question, answer}]
+  overallSentiment   ExitSentiment? @map("overall_sentiment")
+  submittedAt        DateTime?      @map("submitted_at")
+
+  exitRequest ExitRequest @relation(fields: [exitRequestId], references: [id])
+
+  @@map("exit_interviews")
+}
+
+// =========================================================================
+// ENGAGEMENT & COMMUNICATION (HRMS-Engagement-Build-Spec v1.0)
+// =========================================================================
+
+enum AnnouncementAudience {
+  all
+  department
+  location
+}
+
+model Announcement {
+  id             String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String                @map("tenant_id") @db.Uuid
+  title          String
+  body           String
+  audience       AnnouncementAudience  @default(all)
+  audienceRefId  String?               @map("audience_ref_id") @db.Uuid
+  publishedAt    DateTime?             @map("published_at")
+  createdByUserId String               @map("created_by") @db.Uuid
+
+  @@map("announcements")
+}
+
+enum RecognitionVisibility {
+  public
+  manager_only
+}
+
+model Recognition {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String                @map("tenant_id") @db.Uuid
+  givenByEmployeeId   String                @map("given_by_employee_id") @db.Uuid
+  givenToEmployeeId   String                @map("given_to_employee_id") @db.Uuid
+  category            String?
+  message             String
+  visibility          RecognitionVisibility @default(public)
+  createdAt           DateTime              @default(now()) @map("created_at")
+
+  @@map("recognitions")
+}
+
+model Survey {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  title        String
+  questions    Json      // [{id, text, type: nps|rating|text}]
+  isAnonymous  Boolean   @default(true) @map("is_anonymous")
+  opensAt      DateTime  @map("opens_at")
+  closesAt     DateTime  @map("closes_at")
+
+  responses     SurveyResponse[]
+  hasResponded  SurveyHasResponded[]
+
+  @@map("surveys")
+}
+
+// employee_id is intentionally NULLABLE and left null for anonymous surveys —
+// not "stored and hidden". See Engagement spec §3.
+model SurveyResponse {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  surveyId     String    @map("survey_id") @db.Uuid
+  employeeId   String?   @map("employee_id") @db.Uuid
+  answers      Json      // [{questionId, answer}]
+  submittedAt  DateTime  @default(now()) @map("submitted_at")
+
+  survey Survey @relation(fields: [surveyId], references: [id])
+
+  @@map("survey_responses")
+}
+
+// Tracks who has responded (for duplicate-prevention + response-rate) WITHOUT
+// ever joining back to answers — deliberately a separate table from SurveyResponse.
+model SurveyHasResponded {
+  surveyId     String   @map("survey_id") @db.Uuid
+  employeeId   String   @map("employee_id") @db.Uuid
+  respondedAt  DateTime @default(now()) @map("responded_at")
+
+  survey Survey @relation(fields: [surveyId], references: [id])
+
+  @@id([surveyId, employeeId])
+  @@map("survey_has_responded")
+}
