@@ -57,6 +57,12 @@ export class PayrollService {
     });
   }
 
+  async listRuns(tenantId: string) {
+    return this.prisma.withTenant(tenantId, (tx) =>
+      tx.payrollRun.findMany({ where: { tenantId }, orderBy: { period: 'desc' } }),
+    );
+  }
+
   /** Internal API used by Exit Management on all-clear (spec §9) — idempotent per exitRequestId. */
   async createFullAndFinalRun(tx: Tx, tenantId: string, exitRequestId: string, period: string) {
     const existing = await tx.payrollRun.findUnique({ where: { exitRequestId } });

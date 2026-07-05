@@ -35,6 +35,11 @@ export class PayrollController {
     return this.payroll.createRun(user.tenantId!, dto.period, dto.runType ?? 'regular');
   }
 
+  @Get('payroll-runs')
+  listRuns(@CurrentUser() user: RequestUser) {
+    return this.payroll.listRuns(user.tenantId!);
+  }
+
   @Roles(SystemRole.HR_ADMIN)
   @Post('payroll-runs/:id/process')
   processRun(@CurrentUser() user: RequestUser, @Param('id') id: string) {
