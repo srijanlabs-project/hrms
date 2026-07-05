@@ -52,13 +52,27 @@ export class AssetsService {
   }
 
   async listAssets(tenantId: string, status?: string) {
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.asset.findMany({
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const assets = await tx.asset.findMany({
         where: { tenantId, status: status as never },
         include: { allocations: { where: { returnedOn: null } } },
         orderBy: { assetTag: 'asc' },
-      }),
-    );
+      });
+      // AssetAllocation has no Prisma relation to Employee (only the raw
+      // employeeId column) — a small batched lookup rather than a schema change.
+      const employeeIds = assets.flatMap((a) => a.allocations.map((al) => al.employeeId));
+      const employees = await tx.employee.findMany({
+        where: { id: { in: employeeIds } },
+        select: { id: true, firstName: true, lastName: true, employeeCode: true },
+      });
+      const byId = new Map(employees.map((e) => [e.id, e]));
+      return assets.map((a) => ({
+        ...a,
+        currentAllocation: a.allocations[0]
+          ? { ...a.allocations[0], employee: byId.get(a.allocations[0].employeeId) ?? null }
+          : null,
+      }));
+    });
   }
 
   async allocate(tenantId: string, assetId: string, dto: AllocateAssetDto) {

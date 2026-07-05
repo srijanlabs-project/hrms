@@ -40,7 +40,20 @@ export class LearningService {
   }
 
   async listCourses(tenantId: string) {
-    return this.prisma.withTenant(tenantId, (tx) => tx.course.findMany({ where: { tenantId, isActive: true }, orderBy: { title: 'asc' } }));
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const courses = await tx.course.findMany({ where: { tenantId, isActive: true }, orderBy: { title: 'asc' } });
+      const assignments = await tx.trainingAssignment.groupBy({
+        by: ['courseId', 'status'],
+        where: { tenantId, courseId: { in: courses.map((c) => c.id) } },
+        _count: true,
+      });
+      return courses.map((c) => {
+        const forCourse = assignments.filter((a) => a.courseId === c.id);
+        const total = forCourse.reduce((sum, a) => sum + a._count, 0);
+        const completed = forCourse.find((a) => a.status === 'completed')?._count ?? 0;
+        return { ...c, assignedCount: total, completedCount: completed };
+      });
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -122,8 +135,8 @@ export class LearningService {
   }
 
   async listAssignments(tenantId: string, filters: { employeeId?: string; courseId?: string; status?: TrainingStatus }) {
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.trainingAssignment.findMany({
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const assignments = await tx.trainingAssignment.findMany({
         where: {
           tenantId,
           employeeId: filters.employeeId,
@@ -131,8 +144,16 @@ export class LearningService {
           status: filters.status,
         },
         orderBy: { dueDate: 'asc' },
-      }),
-    );
+      });
+      // TrainingAssignment has no Prisma relation to Employee (only the raw
+      // employeeId column) — a small batched lookup rather than a schema change.
+      const employees = await tx.employee.findMany({
+        where: { id: { in: assignments.map((a) => a.employeeId) } },
+        select: { id: true, firstName: true, lastName: true, employeeCode: true },
+      });
+      const byId = new Map(employees.map((e) => [e.id, e]));
+      return assignments.map((a) => ({ ...a, employee: byId.get(a.employeeId) ?? null }));
+    });
   }
 
   async startAssignment(tenantId: string, assignmentId: string) {

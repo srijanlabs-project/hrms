@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/apiClient';
+import { formatDate } from '../lib/format';
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/;
 
 // Generic real-data list view for lower-priority screens — renders whatever
 // fields come back as a simple table. Bespoke pages (Leave, Attendance,
@@ -41,7 +44,9 @@ export function SimpleListPage({ title, path, columns }: { title: string; path: 
 }
 
 function formatCell(value: unknown): string {
-  if (value == null) return '—';
+  if (value == null || value === '') return '—';
+  if (typeof value === 'string' && ISO_DATE_RE.test(value)) return formatDate(value);
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }

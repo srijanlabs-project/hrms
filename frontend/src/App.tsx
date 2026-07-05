@@ -12,6 +12,9 @@ import { AdminLeave } from './pages/admin/Leave';
 import { Payroll } from './pages/admin/Payroll';
 import { ApprovalsInbox } from './pages/shared/ApprovalsInbox';
 import { SimpleListPage } from './components/SimpleListPage';
+import { Assets } from './pages/admin/Assets';
+import { Exit } from './pages/admin/Exit';
+import { Learning } from './pages/admin/Learning';
 import { TeamDashboard } from './pages/manager/TeamDashboard';
 import { EssHome } from './pages/ess/Home';
 import { MyAttendance } from './pages/ess/MyAttendance';
@@ -78,9 +81,9 @@ export default function App() {
         <Route path="payroll" element={<Payroll />} />
         <Route path="recruitment" element={<SimpleListPage title="Recruitment — Job Requisitions" path="/job-requisitions" columns={['title', 'status', 'headcount', 'employmentType']} />} />
         <Route path="performance" element={<SimpleListPage title="Performance — Review Cycles" path="/review-cycles" columns={['name', 'status', 'periodStart', 'periodEnd']} />} />
-        <Route path="assets" element={<SimpleListPage title="Assets" path="/assets" columns={['assetTag', 'type', 'status', 'makeModel']} />} />
-        <Route path="exit" element={<SimpleListPage title="Exit Requests" path="/exit-requests" columns={['status', 'resignationDate', 'lastWorkingDay']} />} />
-        <Route path="learning" element={<SimpleListPage title="Learning — Courses" path="/courses" columns={['title', 'category', 'isMandatory', 'isActive']} />} />
+        <Route path="assets" element={<Assets />} />
+        <Route path="exit" element={<Exit />} />
+        <Route path="learning" element={<Learning />} />
         <Route path="engagement" element={<SimpleListPage title="Announcements" path="/announcements" columns={['title', 'audience', 'publishedAt']} />} />
         <Route path="approvals" element={<ApprovalsInbox />} />
       </Route>

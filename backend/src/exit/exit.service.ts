@@ -59,13 +59,39 @@ export class ExitService {
   }
 
   async listExitRequests(tenantId: string, employeeId?: string) {
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.exitRequest.findMany({
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const requests = await tx.exitRequest.findMany({
         where: { tenantId, employeeId },
-        include: { clearanceTasks: true, exitInterview: true },
+        include: {
+          clearanceTasks: { include: { assignee: { select: { id: true, employeeId: true, email: true, mobileNumber: true } } } },
+          exitInterview: true,
+        },
         orderBy: { createdAt: 'desc' },
-      }),
-    );
+      });
+      // Neither ExitRequest->Employee nor User->Employee's display name is a
+      // direct Prisma relation here (assignee is a User, whose name lives on
+      // its linked Employee row) — one batched lookup covers both the exiting
+      // employee and every clearance task's assignee.
+      const employeeIds = [
+        ...requests.map((r) => r.employeeId),
+        ...requests.flatMap((r) => r.clearanceTasks.map((t) => t.assignee.employeeId).filter((id): id is string => !!id)),
+      ];
+      const employees = await tx.employee.findMany({
+        where: { id: { in: employeeIds } },
+        select: { id: true, firstName: true, lastName: true, employeeCode: true, department: { select: { name: true } } },
+      });
+      const byId = new Map(employees.map((e) => [e.id, e]));
+      return requests.map((r) => ({
+        ...r,
+        employee: byId.get(r.employeeId) ?? null,
+        clearanceTasks: r.clearanceTasks.map((t) => ({
+          ...t,
+          assigneeName: (t.assignee.employeeId && byId.get(t.assignee.employeeId))
+            ? `${byId.get(t.assignee.employeeId)!.firstName} ${byId.get(t.assignee.employeeId)!.lastName ?? ''}`.trim()
+            : t.assignee.email ?? t.assignee.mobileNumber,
+        })),
+      }));
+    });
   }
 
   async updateLastWorkingDay(tenantId: string, exitRequestId: string, actorUserId: string, dto: UpdateLastWorkingDayDto) {
