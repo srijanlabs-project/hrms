@@ -7,6 +7,7 @@ import { RequestUser } from '../common/auth/request-user';
 
 const OTP_TTL_MINUTES = 5;
 const MAX_OTP_ATTEMPTS = 5;
+const OTP_REQUEST_COOLDOWN_SECONDS = 30;
 
 @Injectable()
 export class AuthService {
@@ -18,6 +19,23 @@ export class AuthService {
   ) {}
 
   async requestOtp(mobileNumber: string) {
+    // Throttle: reject a new OTP request within OTP_REQUEST_COOLDOWN_SECONDS of the
+    // last one for this number. Prevents an attacker from rapid-firing OTP requests
+    // to burn SMS budget or use delivery timing/volume to enumerate valid numbers.
+    const lastChallenge = await this.prisma.otpChallenge.findFirst({
+      where: { mobileNumber },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (lastChallenge) {
+      const secondsSinceLast = (Date.now() - lastChallenge.createdAt.getTime()) / 1000;
+      if (secondsSinceLast < OTP_REQUEST_COOLDOWN_SECONDS) {
+        throw AppErrors.badRequest(
+          'OTP_REQUEST_TOO_SOON',
+          `Please wait ${Math.ceil(OTP_REQUEST_COOLDOWN_SECONDS - secondsSinceLast)}s before requesting another OTP`,
+        );
+      }
+    }
+
     const isDev = process.env.NODE_ENV !== 'production';
     const otp = isDev && process.env.OTP_STATIC_DEV_CODE ? process.env.OTP_STATIC_DEV_CODE : this.generateOtp();
 
