@@ -208,6 +208,15 @@ model Employee {
   managerId             String?           @map("manager_id") @db.Uuid
   dateOfJoining         DateTime          @map("date_of_joining") @db.Date
   dateOfExit            DateTime?         @map("date_of_exit") @db.Date
+  // Mandatory KYC for Indian statutory compliance (TDS filing needs PAN, PF/UAN
+  // needs Aadhaar-linked KYC) — nullable at the DB level only so pre_boarding
+  // employees auto-created by the Recruitment hire handoff aren't blocked before
+  // HR completes onboarding; the "Add Employee" API/form requires both.
+  // Aadhaar is a sensitive national ID under India's Aadhaar Act — stored as
+  // plain text here for MVP; production needs encryption-at-rest/masking before
+  // go-live (tracked in SECURITY_NOTES.md).
+  panNumber             String?           @unique @map("pan_number")
+  aadhaarNumber         String?           @unique @map("aadhaar_number")
   employmentStatus      EmploymentStatus  @default(pre_boarding) @map("employment_status")
   employmentType        EmploymentType    @map("employment_type")
   workLocationId        String?           @map("work_location_id") @db.Uuid

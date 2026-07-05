@@ -16,7 +16,7 @@ export class CreateGoalDto {
   @MinLength(2)
   title: string;
 
-  @IsString()
+  @IsEnum(GoalType)
   type: GoalType;
 
   @IsOptional()

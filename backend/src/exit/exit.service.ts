@@ -212,6 +212,17 @@ export class ExitService {
     const tasks = await tx.clearanceTask.findMany({ where: { exitRequestId } });
     const expectedDepts = CLEARANCE_DEPARTMENTS.length;
     const allCleared = tasks.length >= expectedDepts && tasks.every((t) => t.status === 'cleared');
+    // KNOWN TIMEZONE INCONSISTENCY: this compares the real UTC instant against a
+    // UTC-midnight date, while updateLastWorkingDay's LWD_BEFORE_TODAY check
+    // compares against the server's LOCAL calendar day (`toDateString()`). For a
+    // server timezone ahead of UTC (e.g. IST, UTC+5:30), there's a multi-hour
+    // window right after local midnight where "today" is a valid lastWorkingDay
+    // per that check, but this pastLwd check won't be satisfied until UTC
+    // midnight actually arrives — an exit can sit "clearance done, all tasks
+    // cleared" for several hours before auto-finalizing. Not a data-integrity
+    // bug (the daily cron sweep is a self-correcting backstop, see the
+    // dailyClearanceSweep job), but worth fixing by making both checks compare
+    // in the same reference frame — tracked, not fixed here.
     const pastLwd = new Date() >= new Date(exitRequest.lastWorkingDay);
     if (!allCleared || !pastLwd) return;
 

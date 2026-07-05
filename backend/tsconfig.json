@@ -21,5 +21,6 @@
     "paths": {
       "@app/*": ["src/*"]
     }
-  }
+  },
+  "include": ["src"]
 }

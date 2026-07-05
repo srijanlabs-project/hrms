@@ -21,6 +21,10 @@ export class PayrollService {
     );
   }
 
+  async listSalaryStructures(tenantId: string) {
+    return this.prisma.withTenant(tenantId, (tx) => tx.salaryStructure.findMany({ where: { tenantId, isActive: true } }));
+  }
+
   async assignCompensation(tenantId: string, employeeId: string, salaryStructureId: string, annualCtc: number, effectiveFrom: string, taxRegime: 'old' | 'new') {
     return this.prisma.withTenant(tenantId, async (tx) => {
       const structure = await tx.salaryStructure.findUniqueOrThrow({ where: { id: salaryStructureId } });

@@ -18,7 +18,7 @@ export function Employees() {
   const queryClient = useQueryClient();
   const { data: employees, isLoading } = useQuery({ queryKey: ['employees'], queryFn: () => api.get<Employee[]>('/employees') });
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ employeeCode: '', firstName: '', lastName: '', dateOfJoining: '', employmentType: 'full_time' });
+  const [form, setForm] = useState({ employeeCode: '', firstName: '', lastName: '', dateOfJoining: '', employmentType: 'full_time', panNumber: '', aadhaarNumber: '' });
   const [error, setError] = useState<string | null>(null);
 
   const createMutation = useMutation({
@@ -26,7 +26,7 @@ export function Employees() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       setShowForm(false);
-      setForm({ employeeCode: '', firstName: '', lastName: '', dateOfJoining: '', employmentType: 'full_time' });
+      setForm({ employeeCode: '', firstName: '', lastName: '', dateOfJoining: '', employmentType: 'full_time', panNumber: '', aadhaarNumber: '' });
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Something went wrong'),
   });
@@ -53,6 +53,24 @@ export function Employees() {
           <input required placeholder="First name" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className="border rounded px-3 py-2 text-sm" />
           <input placeholder="Last name" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className="border rounded px-3 py-2 text-sm" />
           <input required type="date" value={form.dateOfJoining} onChange={(e) => setForm({ ...form, dateOfJoining: e.target.value })} className="border rounded px-3 py-2 text-sm" />
+          <input
+            required
+            placeholder="PAN (e.g. ABCDE1234F)"
+            value={form.panNumber}
+            onChange={(e) => setForm({ ...form, panNumber: e.target.value.toUpperCase() })}
+            pattern="[A-Z]{5}[0-9]{4}[A-Z]"
+            title="Format: ABCDE1234F"
+            className="border rounded px-3 py-2 text-sm"
+          />
+          <input
+            required
+            placeholder="Aadhaar (12 digits)"
+            value={form.aadhaarNumber}
+            onChange={(e) => setForm({ ...form, aadhaarNumber: e.target.value.replace(/\D/g, '').slice(0, 12) })}
+            pattern="[0-9]{12}"
+            title="12 digits, no spaces"
+            className="border rounded px-3 py-2 text-sm"
+          />
           <select value={form.employmentType} onChange={(e) => setForm({ ...form, employmentType: e.target.value })} className="border rounded px-3 py-2 text-sm">
             <option value="full_time">Full time</option>
             <option value="part_time">Part time</option>

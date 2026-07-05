@@ -13,6 +13,8 @@ interface EmployeeFull {
   dateOfJoining: string;
   personalEmail: string | null;
   phone: string | null;
+  panNumber: string | null;
+  aadhaarNumber: string | null;
   department?: { name: string } | null;
   designation?: { name: string } | null;
   manager?: { firstName: string; lastName: string | null } | null;
@@ -45,6 +47,9 @@ export function EmployeeDetail() {
         <div><span className="text-gray-500">Manager</span><div>{employee.manager ? `${employee.manager.firstName} ${employee.manager.lastName ?? ''}` : '—'}</div></div>
         <div><span className="text-gray-500">Email</span><div>{employee.personalEmail ?? '—'}</div></div>
         <div><span className="text-gray-500">Phone</span><div>{employee.phone ?? '—'}</div></div>
+        <div><span className="text-gray-500">PAN</span><div>{employee.panNumber ?? '—'}</div></div>
+        {/* Aadhaar is a sensitive national ID — mask all but the last 4 digits in the UI. */}
+        <div><span className="text-gray-500">Aadhaar</span><div>{employee.aadhaarNumber ? `XXXX-XXXX-${employee.aadhaarNumber.slice(-4)}` : '—'}</div></div>
       </div>
     </div>
   );

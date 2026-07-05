@@ -41,8 +41,15 @@ export class EmployeesService {
   }
 
   async create(tenantId: string, dto: CreateEmployeeDto) {
-    const employee = await this.prisma.withTenant(tenantId, (tx) =>
-      tx.employee.create({
+    const employee = await this.prisma.withTenant(tenantId, async (tx) => {
+      const [existingPan, existingAadhaar] = await Promise.all([
+        tx.employee.findUnique({ where: { panNumber: dto.panNumber } }),
+        tx.employee.findUnique({ where: { aadhaarNumber: dto.aadhaarNumber } }),
+      ]);
+      if (existingPan) throw AppErrors.conflict('DUPLICATE_PAN', 'An employee with this PAN already exists');
+      if (existingAadhaar) throw AppErrors.conflict('DUPLICATE_AADHAAR', 'An employee with this Aadhaar number already exists');
+
+      return tx.employee.create({
         data: {
           tenantId,
           employeeCode: dto.employeeCode,
@@ -52,6 +59,8 @@ export class EmployeesService {
           gender: dto.gender,
           personalEmail: dto.personalEmail,
           phone: dto.phone,
+          panNumber: dto.panNumber,
+          aadhaarNumber: dto.aadhaarNumber,
           departmentId: dto.departmentId,
           designationId: dto.designationId,
           managerId: dto.managerId,
@@ -60,8 +69,8 @@ export class EmployeesService {
           workLocationId: dto.workLocationId,
           employmentStatus: new Date(dto.dateOfJoining) <= new Date() ? 'active' : 'pre_boarding',
         },
-      }),
-    );
+      });
+    });
     if (employee.employmentStatus === 'active') {
       this.events.emit('employee.joined', { tenantId, employeeId: employee.id, departmentId: employee.departmentId });
     }
@@ -116,6 +125,8 @@ export class EmployeesService {
           gender: dto.gender,
           personalEmail: dto.personalEmail,
           phone: dto.phone,
+          panNumber: dto.panNumber,
+          aadhaarNumber: dto.aadhaarNumber,
           departmentId: dto.departmentId,
           designationId: dto.designationId,
           managerId: dto.managerId,

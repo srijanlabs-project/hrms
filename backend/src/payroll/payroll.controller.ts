@@ -16,6 +16,11 @@ export class PayrollController {
     return this.payroll.createSalaryStructure(user.tenantId!, dto.name, dto.components);
   }
 
+  @Get('salary-structures')
+  listStructures(@CurrentUser() user: RequestUser) {
+    return this.payroll.listSalaryStructures(user.tenantId!);
+  }
+
   @Roles(SystemRole.HR_ADMIN)
   @Post('employee-compensations')
   assignCompensation(@CurrentUser() user: RequestUser, @Body() dto: AssignCompensationDto) {
