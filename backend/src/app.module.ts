@@ -11,6 +11,7 @@ import { ApprovalsModule } from './approvals/approvals.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { LeaveModule } from './leave/leave.module';
 import { PayrollModule } from './payroll/payroll.module';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { PayrollModule } from './payroll/payroll.module';
     LeaveModule,
     PayrollModule,
   ],
+  controllers: [HealthController],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
