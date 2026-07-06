@@ -77,14 +77,22 @@ export class EngagementService {
 
   async listRecognitions(tenantId: string, actingUser: RequestUser) {
     const canSeeManagerOnly = actingUser.roleName === SystemRole.MANAGER || actingUser.roleName === SystemRole.HR_ADMIN;
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.recognition.findMany({
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const recognitions = await tx.recognition.findMany({
         // Filtered in the service layer (not just the controller) so any future
         // caller of this method inherits the same visibility rule automatically.
         where: { tenantId, visibility: canSeeManagerOnly ? undefined : 'public' },
         orderBy: { createdAt: 'desc' },
-      }),
-    );
+      });
+      const employeeIds = [...new Set([...recognitions.map((r) => r.givenByEmployeeId), ...recognitions.map((r) => r.givenToEmployeeId)])];
+      const employees = await tx.employee.findMany({ where: { id: { in: employeeIds } }, select: { id: true, firstName: true, lastName: true } });
+      const byId = new Map(employees.map((e) => [e.id, e]));
+      return recognitions.map((r) => ({
+        ...r,
+        givenBy: byId.get(r.givenByEmployeeId) ?? null,
+        givenTo: byId.get(r.givenToEmployeeId) ?? null,
+      }));
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -107,7 +115,15 @@ export class EngagementService {
   }
 
   async listSurveys(tenantId: string) {
-    return this.prisma.withTenant(tenantId, (tx) => tx.survey.findMany({ where: { tenantId }, orderBy: { opensAt: 'desc' } }));
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const surveys = await tx.survey.findMany({ where: { tenantId }, orderBy: { opensAt: 'desc' } });
+      // SurveyHasResponded (not SurveyResponse) is the correct count source even
+      // for non-anonymous surveys — see the anonymity design note above: never
+      // join SurveyResponse back to who-responded for a count either.
+      const counts = await tx.surveyHasResponded.groupBy({ by: ['surveyId'], where: { surveyId: { in: surveys.map((s) => s.id) } }, _count: true });
+      const countBySurvey = new Map(counts.map((c) => [c.surveyId, c._count]));
+      return surveys.map((s) => ({ ...s, responseCount: countBySurvey.get(s.id) ?? 0 }));
+    });
   }
 
   async submitResponse(tenantId: string, surveyId: string, actingUser: RequestUser, dto: SubmitSurveyResponseDto) {

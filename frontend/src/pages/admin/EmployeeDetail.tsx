@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/apiClient';
 import { formatDate } from '../../lib/format';
+import { EmployeeLink } from '../../components/EmployeeLink';
 
 interface EmployeeFull {
   id: string;
@@ -17,7 +18,7 @@ interface EmployeeFull {
   aadhaarNumber: string | null;
   department?: { name: string } | null;
   designation?: { name: string } | null;
-  manager?: { firstName: string; lastName: string | null } | null;
+  manager?: { id: string; firstName: string; lastName: string | null } | null;
 }
 
 export function EmployeeDetail() {
@@ -44,7 +45,7 @@ export function EmployeeDetail() {
         <div><span className="text-gray-500">Date of Joining</span><div>{formatDate(employee.dateOfJoining)}</div></div>
         <div><span className="text-gray-500">Department</span><div>{employee.department?.name ?? '—'}</div></div>
         <div><span className="text-gray-500">Designation</span><div>{employee.designation?.name ?? '—'}</div></div>
-        <div><span className="text-gray-500">Manager</span><div>{employee.manager ? `${employee.manager.firstName} ${employee.manager.lastName ?? ''}` : '—'}</div></div>
+        <div><span className="text-gray-500">Manager</span><div>{employee.manager ? <EmployeeLink employeeId={employee.manager.id} name={`${employee.manager.firstName} ${employee.manager.lastName ?? ''}`} /> : '—'}</div></div>
         <div><span className="text-gray-500">Email</span><div>{employee.personalEmail ?? '—'}</div></div>
         <div><span className="text-gray-500">Phone</span><div>{employee.phone ?? '—'}</div></div>
         <div><span className="text-gray-500">PAN</span><div>{employee.panNumber ?? '—'}</div></div>

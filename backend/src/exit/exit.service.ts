@@ -86,6 +86,7 @@ export class ExitService {
         employee: byId.get(r.employeeId) ?? null,
         clearanceTasks: r.clearanceTasks.map((t) => ({
           ...t,
+          assigneeEmployeeId: t.assignee.employeeId,
           assigneeName: (t.assignee.employeeId && byId.get(t.assignee.employeeId))
             ? `${byId.get(t.assignee.employeeId)!.firstName} ${byId.get(t.assignee.employeeId)!.lastName ?? ''}`.trim()
             : t.assignee.email ?? t.assignee.mobileNumber,

@@ -11,10 +11,13 @@ import { AdminAttendance } from './pages/admin/Attendance';
 import { AdminLeave } from './pages/admin/Leave';
 import { Payroll } from './pages/admin/Payroll';
 import { ApprovalsInbox } from './pages/shared/ApprovalsInbox';
-import { SimpleListPage } from './components/SimpleListPage';
+import { Delegations } from './pages/shared/Delegations';
+import { Recruitment } from './pages/admin/Recruitment';
+import { Performance } from './pages/admin/Performance';
 import { Assets } from './pages/admin/Assets';
 import { Exit } from './pages/admin/Exit';
 import { Learning } from './pages/admin/Learning';
+import { Engagement } from './pages/admin/Engagement';
 import { TeamDashboard } from './pages/manager/TeamDashboard';
 import { EssHome } from './pages/ess/Home';
 import { MyAttendance } from './pages/ess/MyAttendance';
@@ -36,11 +39,13 @@ const adminNav = [
   { to: '/admin/learning', label: 'Learning' },
   { to: '/admin/engagement', label: 'Engagement' },
   { to: '/admin/approvals', label: 'Approvals' },
+  { to: '/admin/delegations', label: 'Delegations' },
 ];
 
 const managerNav = [
   { to: '/manager', label: 'My Team' },
   { to: '/manager/approvals', label: 'Approvals' },
+  { to: '/manager/delegations', label: 'Delegations' },
 ];
 
 const essNav = [
@@ -79,13 +84,14 @@ export default function App() {
         <Route path="attendance" element={<AdminAttendance />} />
         <Route path="leave" element={<AdminLeave />} />
         <Route path="payroll" element={<Payroll />} />
-        <Route path="recruitment" element={<SimpleListPage title="Recruitment — Job Requisitions" path="/job-requisitions" columns={['title', 'status', 'headcount', 'employmentType']} />} />
-        <Route path="performance" element={<SimpleListPage title="Performance — Review Cycles" path="/review-cycles" columns={['name', 'status', 'periodStart', 'periodEnd']} />} />
+        <Route path="recruitment" element={<Recruitment />} />
+        <Route path="performance" element={<Performance />} />
         <Route path="assets" element={<Assets />} />
         <Route path="exit" element={<Exit />} />
         <Route path="learning" element={<Learning />} />
-        <Route path="engagement" element={<SimpleListPage title="Announcements" path="/announcements" columns={['title', 'audience', 'publishedAt']} />} />
+        <Route path="engagement" element={<Engagement />} />
         <Route path="approvals" element={<ApprovalsInbox />} />
+        <Route path="delegations" element={<Delegations />} />
       </Route>
 
       <Route
@@ -98,6 +104,7 @@ export default function App() {
       >
         <Route index element={<TeamDashboard />} />
         <Route path="approvals" element={<ApprovalsInbox />} />
+        <Route path="delegations" element={<Delegations />} />
       </Route>
 
       <Route

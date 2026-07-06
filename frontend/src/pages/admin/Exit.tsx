@@ -2,9 +2,10 @@ import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/apiClient';
 import { formatDate } from '../../lib/format';
+import { EmployeeLink } from '../../components/EmployeeLink';
 
-interface Employee { firstName: string; lastName: string | null; employeeCode: string; department?: { name: string } | null }
-interface ClearanceTask { id: string; department: string; status: string; blockedReason: string | null; assigneeName: string }
+interface Employee { id: string; firstName: string; lastName: string | null; employeeCode: string; department?: { name: string } | null }
+interface ClearanceTask { id: string; department: string; status: string; blockedReason: string | null; assigneeName: string; assigneeEmployeeId: string | null }
 interface ExitRequest {
   id: string;
   status: string;
@@ -42,7 +43,9 @@ export function Exit() {
               <Fragment key={r.id}>
                 <tr className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => setExpanded(expanded === r.id ? null : r.id)}>
                   <td className="px-4 py-2 font-medium">
-                    {r.employee ? `${r.employee.firstName} ${r.employee.lastName ?? ''}` : '—'}
+                    {r.employee
+                      ? <EmployeeLink employeeId={r.employee.id} name={`${r.employee.firstName} ${r.employee.lastName ?? ''}`} />
+                      : '—'}
                     <span className="text-gray-400 text-xs ml-1">{r.employee?.employeeCode}</span>
                   </td>
                   <td className="px-4 py-2">{r.employee?.department?.name ?? '—'}</td>
@@ -68,7 +71,9 @@ export function Exit() {
                               <span className="font-medium capitalize">{t.department}</span>
                               <ClearanceBadge status={t.status} />
                             </div>
-                            <div className="text-xs text-gray-500 mt-1">Assignee: {t.assigneeName}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Assignee: {t.assigneeEmployeeId ? <EmployeeLink employeeId={t.assigneeEmployeeId} name={t.assigneeName} /> : t.assigneeName}
+                            </div>
                             {t.status === 'blocked' && t.blockedReason && (
                               <div className="text-xs text-red-600 mt-1">Why: {t.blockedReason}</div>
                             )}

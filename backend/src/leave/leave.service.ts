@@ -210,8 +210,8 @@ export class LeaveService {
   }
 
   async list(tenantId: string, filters: { employeeId?: string; status?: string; from?: string; to?: string }) {
-    return this.prisma.withTenant(tenantId, (tx) =>
-      tx.leaveRequest.findMany({
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const requests = await tx.leaveRequest.findMany({
         where: {
           tenantId,
           employeeId: filters.employeeId,
@@ -219,8 +219,16 @@ export class LeaveService {
           startDate: filters.from ? { gte: new Date(filters.from) } : undefined,
         },
         orderBy: { appliedAt: 'desc' },
-      }),
-    );
+      });
+      // LeaveRequest has no Prisma relation to Employee (only the raw
+      // employeeId column) — a small batched lookup rather than a schema change.
+      const employees = await tx.employee.findMany({
+        where: { id: { in: requests.map((r) => r.employeeId) } },
+        select: { id: true, firstName: true, lastName: true, employeeCode: true },
+      });
+      const byId = new Map(employees.map((e) => [e.id, e]));
+      return requests.map((r) => ({ ...r, employee: byId.get(r.employeeId) ?? null }));
+    });
   }
 
   async decide(tenantId: string, requestId: string, actingUser: RequestUser, decision: 'approve' | 'reject', comment?: string) {

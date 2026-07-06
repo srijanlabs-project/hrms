@@ -308,6 +308,23 @@ model AuditLog {
 // APPROVALS ENGINE (Engineering Spec §4.4) — shared primitive
 // =========================================================================
 
+// "While I'm on leave, let X handle my approvals" — checked at DECISION time
+// (not when an approval instance is created), so a delegation set up after a
+// request was already submitted still lets the delegate act on it.
+model Delegation {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String    @map("tenant_id") @db.Uuid
+  delegatorEmployeeId String    @map("delegator_employee_id") @db.Uuid
+  delegateEmployeeId  String    @map("delegate_employee_id") @db.Uuid
+  startDate           DateTime  @map("start_date") @db.Date
+  endDate             DateTime  @map("end_date") @db.Date
+  reason              String?
+  revokedAt           DateTime? @map("revoked_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  @@map("delegations")
+}
+
 enum ApprovalApplicability {
   leave
   regularization

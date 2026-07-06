@@ -48,7 +48,14 @@ export class RecruitmentService {
   }
 
   async listRequisitions(tenantId: string) {
-    return this.prisma.withTenant(tenantId, (tx) => tx.jobRequisition.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' } }));
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const requisitions = await tx.jobRequisition.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' } });
+      const departments = await tx.department.findMany({ where: { id: { in: requisitions.map((r) => r.departmentId) } }, select: { id: true, name: true } });
+      const departmentById = new Map(departments.map((d) => [d.id, d.name]));
+      const candidateCounts = await tx.candidate.groupBy({ by: ['requisitionId'], where: { requisitionId: { in: requisitions.map((r) => r.id) } }, _count: true });
+      const countByReq = new Map(candidateCounts.map((c) => [c.requisitionId, c._count]));
+      return requisitions.map((r) => ({ ...r, departmentName: departmentById.get(r.departmentId) ?? null, candidateCount: countByReq.get(r.id) ?? 0 }));
+    });
   }
 
   async decideRequisition(tenantId: string, id: string, actingUser: RequestUser, decision: 'approve' | 'reject', comment?: string) {
@@ -77,7 +84,22 @@ export class RecruitmentService {
   }
 
   async listCandidates(tenantId: string, requisitionId?: string) {
-    return this.prisma.withTenant(tenantId, (tx) => tx.candidate.findMany({ where: { tenantId, requisitionId }, orderBy: { createdAt: 'desc' } }));
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const candidates = await tx.candidate.findMany({ where: { tenantId, requisitionId }, orderBy: { createdAt: 'desc' } });
+      const requisitions = await tx.jobRequisition.findMany({ where: { id: { in: candidates.map((c) => c.requisitionId) } }, select: { id: true, title: true } });
+      const reqById = new Map(requisitions.map((r) => [r.id, r.title]));
+      const referrerIds = candidates.map((c) => c.referredByEmployeeId).filter((id): id is string => !!id);
+      const referrers = await tx.employee.findMany({ where: { id: { in: referrerIds } }, select: { id: true, firstName: true, lastName: true } });
+      const referrerById = new Map(referrers.map((e) => [e.id, e]));
+      const feedbackCounts = await tx.interviewFeedback.groupBy({ by: ['candidateId'], where: { candidateId: { in: candidates.map((c) => c.id) } }, _count: true });
+      const feedbackByCandidate = new Map(feedbackCounts.map((f) => [f.candidateId, f._count]));
+      return candidates.map((c) => ({
+        ...c,
+        requisitionTitle: reqById.get(c.requisitionId) ?? null,
+        referrer: c.referredByEmployeeId ? referrerById.get(c.referredByEmployeeId) ?? null : null,
+        interviewCount: feedbackByCandidate.get(c.id) ?? 0,
+      }));
+    });
   }
 
   async changeStage(tenantId: string, candidateId: string, dto: StageChangeDto) {

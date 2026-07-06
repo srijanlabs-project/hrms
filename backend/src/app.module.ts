@@ -18,6 +18,7 @@ import { LearningModule } from './learning/learning.module';
 import { AssetsModule } from './assets/assets.module';
 import { ExitModule } from './exit/exit.module';
 import { EngagementModule } from './engagement/engagement.module';
+import { DelegationsModule } from './delegations/delegations.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { EngagementModule } from './engagement/engagement.module';
     ScheduleModule.forRoot(),
     AuthModule,
     EmployeeCoreModule,
+    DelegationsModule,
     ApprovalsModule,
     AttendanceModule,
     LeaveModule,

@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { ApprovalsService } from './approvals.service';
 import { CreateApprovalChainDto } from './dto/create-approval-chain.dto';
@@ -41,15 +42,70 @@ export class ApprovalsController {
   @Get('approvals/pending')
   async pendingForMe(@CurrentUser() user: RequestUser) {
     return this.prisma.withTenant(user.tenantId!, async (tx) => {
-      const pending = await tx.approvalInstance.findMany({ where: { tenantId: user.tenantId!, status: 'pending' } });
+      const pending = await tx.approvalInstance.findMany({
+        where: { tenantId: user.tenantId!, status: 'pending' },
+        include: { chain: true },
+      });
       const mine = [];
       for (const instance of pending) {
         if (await this.approvals.isAssignedApprover(tx, instance.id, user)) {
-          mine.push(instance);
+          mine.push({ ...instance, summary: await this.describeInstance(tx, instance) });
         }
       }
       return mine;
     });
+  }
+
+  /**
+   * The approval instance itself carries no business context (it's a generic
+   * router — see approvals.service.ts) so an approver seeing just an instance
+   * ID and step number has no idea what they're approving or for whom. This
+   * resolves the underlying request (leave/regularization/requisition) for
+   * display — never trust an approver to act on an opaque ID.
+   */
+  private async describeInstance(
+    tx: Prisma.TransactionClient,
+    instance: { id: string; chain: { appliesTo: string } },
+  ): Promise<{ type: string; employee: { id: string; firstName: string; lastName: string | null } | null; headline: string; detail: string } | null> {
+    if (instance.chain.appliesTo === 'leave') {
+      const req = await tx.leaveRequest.findUnique({ where: { approvalInstanceId: instance.id }, include: { leaveType: true } });
+      if (!req) return null;
+      const employee = await tx.employee.findUnique({ where: { id: req.employeeId }, select: { id: true, firstName: true, lastName: true } });
+      return {
+        type: 'Leave request',
+        employee,
+        headline: `${req.leaveType.name} — ${req.totalDays} day(s)`,
+        detail: `${req.startDate.toISOString().slice(0, 10)} to ${req.endDate.toISOString().slice(0, 10)}: "${req.reason}"`,
+      };
+    }
+    if (instance.chain.appliesTo === 'regularization') {
+      const req = await tx.regularizationRequest.findFirst({ where: { approvalInstanceId: instance.id }, include: { attendanceRecord: true } });
+      if (!req) return null;
+      const employee = req.attendanceRecord
+        ? await tx.employee.findUnique({ where: { id: req.attendanceRecord.employeeId }, select: { id: true, firstName: true, lastName: true } })
+        : null;
+      return {
+        type: 'Attendance regularization',
+        employee,
+        headline: req.attendanceRecord ? `Date: ${req.attendanceRecord.date.toISOString().slice(0, 10)}` : 'Attendance correction',
+        detail: `"${req.reason}"`,
+      };
+    }
+    if (instance.chain.appliesTo === 'requisition') {
+      const req = await tx.jobRequisition.findFirst({ where: { approvalInstanceId: instance.id } });
+      if (!req) return null;
+      const requester = await tx.user.findUnique({ where: { id: req.requestedByUserId }, select: { employeeId: true } });
+      const employee = requester?.employeeId
+        ? await tx.employee.findUnique({ where: { id: requester.employeeId }, select: { id: true, firstName: true, lastName: true } })
+        : null;
+      return {
+        type: 'Job requisition',
+        employee,
+        headline: req.title,
+        detail: `Headcount ${req.headcount}, budget ₹${req.budgetCtcMax ?? '—'}`,
+      };
+    }
+    return null;
   }
 
   @Patch('approvals/:instanceId/decision')

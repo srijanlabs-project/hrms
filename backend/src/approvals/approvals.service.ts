@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ApprovalApplicability, Prisma } from '@prisma/client';
 import { AppErrors } from '../common/errors/app-error';
+import { DelegationsService } from '../delegations/delegations.service';
 
 type Tx = Prisma.TransactionClient;
 
@@ -38,6 +39,8 @@ interface ResolvedStepEntry {
  */
 @Injectable()
 export class ApprovalsService {
+  constructor(private readonly delegations: DelegationsService) {}
+
   async createInstance(
     tx: Tx,
     params: { tenantId: string; applicability: ApprovalApplicability; subjectEmployeeId: string },
@@ -92,10 +95,7 @@ export class ApprovalsService {
       throw AppErrors.conflict('ALREADY_DECIDED', 'This approval instance has no pending step');
     }
 
-    const isAssigned =
-      (current.approverType === 'manager' && current.resolvedApproverEmployeeId === actingUser.employeeId) ||
-      (current.approverType === 'specific_user' && current.resolvedApproverUserId === actingUser.userId) ||
-      (current.approverType === 'role' && current.resolvedApproverRoleId === actingUser.roleId);
+    const isAssigned = await this.matchesApprover(tx, instance.tenantId, current, actingUser);
     if (!isAssigned) {
       throw AppErrors.forbidden('NOT_ASSIGNED_APPROVER', 'You are not the assigned approver for this step');
     }
@@ -133,11 +133,35 @@ export class ApprovalsService {
     if (!instance || instance.status !== 'pending') return false;
     const stepHistory = instance.stepHistory as unknown as ResolvedStepEntry[];
     const current = stepHistory[instance.currentStep];
-    return (
+    return this.matchesApprover(tx, instance.tenantId, current, actingUser);
+  }
+
+  /**
+   * True if actingUser is the step's assigned approver directly, OR is an
+   * active delegate for that approver (see Delegation model / DelegationsService
+   * — "while I'm on leave, let X handle my approvals"). Checked live, at
+   * decision time, not frozen when the instance was created, so a delegation
+   * set up after submission still lets the delegate act. Role-type steps don't
+   * consult delegation — a role already lets any holder of that role act, so
+   * there's no single person to delegate away from.
+   */
+  private async matchesApprover(
+    tx: Tx,
+    tenantId: string,
+    current: ResolvedStepEntry,
+    actingUser: { userId: string; employeeId: string | null; roleId: string },
+  ): Promise<boolean> {
+    const directMatch =
       (current.approverType === 'manager' && current.resolvedApproverEmployeeId === actingUser.employeeId) ||
       (current.approverType === 'specific_user' && current.resolvedApproverUserId === actingUser.userId) ||
-      (current.approverType === 'role' && current.resolvedApproverRoleId === actingUser.roleId)
-    );
+      (current.approverType === 'role' && current.resolvedApproverRoleId === actingUser.roleId);
+    if (directMatch) return true;
+
+    if (current.resolvedApproverEmployeeId && actingUser.employeeId) {
+      const delegate = await this.delegations.getActiveDelegate(tx, tenantId, current.resolvedApproverEmployeeId, new Date());
+      if (delegate === actingUser.employeeId) return true;
+    }
+    return false;
   }
 
   /** Hourly escalation sweep (Leave spec §6.3) — reassigns overdue steps to the tenant's HR Admin. */

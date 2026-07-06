@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/apiClient';
 import { formatDate } from '../../lib/format';
+import { EmployeeLink } from '../../components/EmployeeLink';
 
 interface Employee { id: string; firstName: string; lastName: string | null; employeeCode: string }
 interface Allocation { employeeId: string; allocatedOn: string; expectedReturnOn: string | null; employee: Employee | null }
@@ -42,7 +43,7 @@ export function Assets() {
                 <td className="px-4 py-2"><StatusBadge status={a.status} /></td>
                 <td className="px-4 py-2">
                   {a.currentAllocation?.employee
-                    ? `${a.currentAllocation.employee.firstName} ${a.currentAllocation.employee.lastName ?? ''}`
+                    ? <EmployeeLink employeeId={a.currentAllocation.employee.id} name={`${a.currentAllocation.employee.firstName} ${a.currentAllocation.employee.lastName ?? ''}`} />
                     : <span className="text-gray-400">Unallocated</span>}
                 </td>
                 <td className="px-4 py-2">{a.currentAllocation ? formatDate(a.currentAllocation.allocatedOn) : '—'}</td>

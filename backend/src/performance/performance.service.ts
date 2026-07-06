@@ -44,7 +44,16 @@ export class PerformanceService {
   }
 
   async listCycles(tenantId: string) {
-    return this.prisma.withTenant(tenantId, (tx) => tx.reviewCycle.findMany({ where: { tenantId }, orderBy: { periodStart: 'desc' } }));
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const cycles = await tx.reviewCycle.findMany({ where: { tenantId }, orderBy: { periodStart: 'desc' } });
+      const reviewCounts = await tx.performanceReview.groupBy({ by: ['cycleId', 'status'], where: { cycleId: { in: cycles.map((c) => c.id) } }, _count: true });
+      return cycles.map((c) => {
+        const forCycle = reviewCounts.filter((r) => r.cycleId === c.id);
+        const total = forCycle.reduce((sum, r) => sum + r._count, 0);
+        const calibrated = forCycle.find((r) => r.status === 'calibrated')?._count ?? 0;
+        return { ...c, reviewCount: total, calibratedCount: calibrated };
+      });
+    });
   }
 
   async getCycle(tenantId: string, id: string) {
@@ -203,7 +212,16 @@ export class PerformanceService {
   }
 
   async listReviews(tenantId: string, cycleId: string) {
-    return this.prisma.withTenant(tenantId, (tx) => tx.performanceReview.findMany({ where: { cycleId }, orderBy: { employeeId: 'asc' } }));
+    return this.prisma.withTenant(tenantId, async (tx) => {
+      const reviews = await tx.performanceReview.findMany({ where: { cycleId }, orderBy: { employeeId: 'asc' } });
+      const employees = await tx.employee.findMany({ where: { id: { in: reviews.map((r) => r.employeeId) } }, select: { id: true, firstName: true, lastName: true } });
+      const byId = new Map(employees.map((e) => [e.id, e]));
+      return reviews.map((r) => ({
+        ...r,
+        employee: byId.get(r.employeeId) ?? null,
+        effectiveRating: r.calibratedRating ?? r.managerRating,
+      }));
+    });
   }
 
   /**

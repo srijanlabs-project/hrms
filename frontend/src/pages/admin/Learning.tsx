@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/apiClient';
 import { formatDate } from '../../lib/format';
+import { EmployeeLink } from '../../components/EmployeeLink';
 
 interface Course {
   id: string;
@@ -11,7 +12,7 @@ interface Course {
   assignedCount: number;
   completedCount: number;
 }
-interface Employee { firstName: string; lastName: string | null; employeeCode: string }
+interface Employee { id: string; firstName: string; lastName: string | null; employeeCode: string }
 interface Assignment { id: string; status: string; dueDate: string | null; employee: Employee | null }
 
 export function Learning() {
@@ -65,7 +66,7 @@ export function Learning() {
                           <tbody>
                             {assignments.map((a) => (
                               <tr key={a.id} className="border-t">
-                                <td className="py-1">{a.employee ? `${a.employee.firstName} ${a.employee.lastName ?? ''}` : '—'}</td>
+                                <td className="py-1">{a.employee ? <EmployeeLink employeeId={a.employee.id} name={`${a.employee.firstName} ${a.employee.lastName ?? ''}`} /> : '—'}</td>
                                 <td className="py-1"><AssignmentBadge status={a.status} /></td>
                                 <td className="py-1">{formatDate(a.dueDate)}</td>
                               </tr>

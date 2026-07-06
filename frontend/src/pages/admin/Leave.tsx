@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/apiClient';
 import { formatDate } from '../../lib/format';
+import { EmployeeLink } from '../../components/EmployeeLink';
 
+interface Employee { id: string; firstName: string; lastName: string | null }
 interface LeaveRequest {
   id: string;
   employeeId: string;
@@ -11,6 +13,7 @@ interface LeaveRequest {
   totalDays: string;
   status: string;
   reason: string;
+  employee: Employee | null;
 }
 
 export function AdminLeave() {
@@ -26,6 +29,7 @@ export function AdminLeave() {
         <table className="w-full text-sm">
           <thead className="bg-gray-100 text-left text-gray-500">
             <tr>
+              <th className="px-4 py-2">Employee</th>
               <th className="px-4 py-2">Leave Type</th>
               <th className="px-4 py-2">Dates</th>
               <th className="px-4 py-2">Days</th>
@@ -34,9 +38,12 @@ export function AdminLeave() {
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={5} className="px-4 py-4 text-gray-400">Loading...</td></tr>}
+            {isLoading && <tr><td colSpan={6} className="px-4 py-4 text-gray-400">Loading...</td></tr>}
             {requests?.map((r) => (
               <tr key={r.id} className="border-t hover:bg-gray-50">
+                <td className="px-4 py-2">
+                  {r.employee ? <EmployeeLink employeeId={r.employee.id} name={`${r.employee.firstName} ${r.employee.lastName ?? ''}`} /> : '—'}
+                </td>
                 <td className="px-4 py-2">{typeName(r.leaveTypeId)}</td>
                 <td className="px-4 py-2">{formatDate(r.startDate)} - {formatDate(r.endDate)}</td>
                 <td className="px-4 py-2">{r.totalDays}</td>
@@ -44,7 +51,7 @@ export function AdminLeave() {
                 <td className="px-4 py-2">{r.reason}</td>
               </tr>
             ))}
-            {requests?.length === 0 && <tr><td colSpan={5} className="px-4 py-4 text-gray-400">No leave requests yet.</td></tr>}
+            {requests?.length === 0 && <tr><td colSpan={6} className="px-4 py-4 text-gray-400">No leave requests yet.</td></tr>}
           </tbody>
         </table>
       </div>
