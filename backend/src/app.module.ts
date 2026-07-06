@@ -19,6 +19,7 @@ import { AssetsModule } from './assets/assets.module';
 import { ExitModule } from './exit/exit.module';
 import { EngagementModule } from './engagement/engagement.module';
 import { DelegationsModule } from './delegations/delegations.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { DelegationsModule } from './delegations/delegations.module';
     AssetsModule,
     ExitModule,
     EngagementModule,
+    AnalyticsModule,
   ],
   controllers: [HealthController],
   providers: [

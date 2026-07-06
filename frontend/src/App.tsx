@@ -18,6 +18,7 @@ import { Assets } from './pages/admin/Assets';
 import { Exit } from './pages/admin/Exit';
 import { Learning } from './pages/admin/Learning';
 import { Engagement } from './pages/admin/Engagement';
+import { Analytics } from './pages/admin/Analytics';
 import { TeamDashboard } from './pages/manager/TeamDashboard';
 import { EssHome } from './pages/ess/Home';
 import { MyAttendance } from './pages/ess/MyAttendance';
@@ -28,6 +29,7 @@ const ADMIN_ROLES = ['HR Admin', 'Finance', 'Platform Admin'];
 
 const adminNav = [
   { to: '/admin', label: 'Dashboard' },
+  { to: '/admin/analytics', label: 'Analytics' },
   { to: '/admin/employees', label: 'Employees' },
   { to: '/admin/attendance', label: 'Attendance' },
   { to: '/admin/leave', label: 'Leave' },
@@ -79,6 +81,7 @@ export default function App() {
         }
       >
         <Route index element={<AdminDashboard />} />
+        <Route path="analytics" element={<Analytics />} />
         <Route path="employees" element={<Employees />} />
         <Route path="employees/:id" element={<EmployeeDetail />} />
         <Route path="attendance" element={<AdminAttendance />} />
